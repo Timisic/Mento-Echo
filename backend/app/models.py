@@ -63,6 +63,75 @@ class ExperimentSession(Base):
     participant: Mapped[Participant] = relationship(back_populates="experiment_session")
 
 
+class QuestionnaireResponse(Base):
+    __tablename__ = "questionnaire_responses"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    experiment_session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("experiment_sessions.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    participant_code: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
+    phase: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
+    questionnaire_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    item_key: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
+    item_text: Mapped[str] = mapped_column(Text, nullable=False)
+    item_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    scale: Mapped[str] = mapped_column(String(64), nullable=False)
+    instrument: Mapped[str] = mapped_column(String(128), nullable=False)
+    dimension: Mapped[str] = mapped_column(String(128), nullable=False)
+    response_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    response_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reverse_scored: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    attention_check: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    locked: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class QuestionnaireScore(Base):
+    __tablename__ = "questionnaire_scores"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    experiment_session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("experiment_sessions.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    participant_code: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
+    phase: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
+    questionnaire_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    instrument: Mapped[str] = mapped_column(String(128), nullable=False)
+    dimension: Mapped[str] = mapped_column(String(128), nullable=False)
+    score: Mapped[float | None] = mapped_column(nullable=True)
+    valid_items: Mapped[int] = mapped_column(Integer, nullable=False)
+    missing_items: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    attention_check_passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    experiment_session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("experiment_sessions.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    participant_code: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
+    message_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    provider_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    model_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    system_prompt_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    generation_params: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
+    request_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    response_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retry_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error_message_sanitized: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
 class BehaviorEvent(Base):
     __tablename__ = "behavior_events"
 

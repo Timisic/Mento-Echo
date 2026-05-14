@@ -129,3 +129,112 @@ class BehaviorEventResponse(BaseModel):
     stage: str | None
     metadata: dict[str, object]
     created_at: datetime
+
+
+class ScaleProfileResponse(BaseModel):
+    key: str
+    value_type: str
+    min_value: int | None
+    max_value: int | None
+    labels: dict[str, str] | None
+    options: list[str]
+
+
+class QuestionnaireItemResponse(BaseModel):
+    phase: Literal["pre", "post"]
+    order: int
+    item_key: str
+    item_text: str
+    item_type: str
+    scale: str
+    instrument: str
+    dimension: str
+    reverse_scored: bool
+    required: bool
+    attention_check: bool
+
+
+class QuestionnaireDefinitionResponse(BaseModel):
+    questionnaire_version: str
+    phase: Literal["pre", "post"]
+    locked: bool
+    items: list[QuestionnaireItemResponse]
+    scales: dict[str, ScaleProfileResponse]
+
+
+class QuestionnaireSubmitRequest(BaseModel):
+    responses: dict[str, int | str]
+
+
+class QuestionnaireScoreResponse(BaseModel):
+    instrument: str
+    dimension: str
+    score: float | None
+    valid_items: int
+    missing_items: list[str]
+    attention_check_passed: bool | None
+
+
+class QuestionnaireSubmitResponse(BaseModel):
+    phase: Literal["pre", "post"]
+    questionnaire_version: str
+    locked: bool
+    response_count: int
+    scores: list[QuestionnaireScoreResponse]
+    session: SessionResponse
+
+
+class ResetQuestionnaireRequest(BaseModel):
+    reason: str = Field(min_length=1)
+
+
+class ChatMessageResponse(BaseModel):
+    id: str
+    message_index: int
+    role: str
+    content: str
+    provider_name: str | None
+    model_name: str | None
+    system_prompt_version: str | None
+    generation_params: dict[str, object] | None
+    duration_ms: int | None
+    retry_count: int | None
+    error_code: str | None
+    error_message_sanitized: str | None
+    created_at: datetime
+
+
+class DialogueProgressResponse(BaseModel):
+    participant_turn_count: int
+    dialogue_elapsed_seconds: int
+    met_min_turns: bool
+    met_min_duration: bool
+    eligible_to_finish: bool
+    required_participant_turns: int
+    required_elapsed_seconds: int
+
+
+class DialogueStateResponse(BaseModel):
+    experiment_session_id: str
+    participant_code: str
+    group: ExperimentGroup
+    system_prompt_version: str
+    status: SessionStatus
+    progress: DialogueProgressResponse
+    messages: list[ChatMessageResponse]
+
+
+class SendMessageRequest(BaseModel):
+    content: str = Field(min_length=1)
+
+
+class SendMessageResponse(BaseModel):
+    participant_message: ChatMessageResponse
+    assistant_message: ChatMessageResponse
+    progress: DialogueProgressResponse
+    status: SessionStatus
+
+
+class FinishDialogueResponse(BaseModel):
+    status: SessionStatus
+    progress: DialogueProgressResponse

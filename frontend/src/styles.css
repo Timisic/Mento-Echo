@@ -54,6 +54,35 @@ h1 {
   margin-bottom: 14px;
 }
 
+.stage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.questionnaire-list {
+  display: grid;
+  gap: 12px;
+  max-height: 460px;
+  overflow: auto;
+  padding-right: 8px;
+}
+
+.questionnaire-list label {
+  display: grid;
+  gap: 6px;
+}
+
+.messages {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+}
+
 input,
 select,
 button {

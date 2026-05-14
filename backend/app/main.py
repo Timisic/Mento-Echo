@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import get_settings
 from app.db import database_health, get_session
-from app.models import AuditLog, BehaviorEvent, ExperimentSession, Participant
+from app.ai_provider import prompt_for_group
+from app.models import AuditLog, BehaviorEvent, ChatMessage, ExperimentSession, Participant, QuestionnaireScore
+from app.questionnaire_config import QUESTIONNAIRE_VERSION, SCALE_PROFILES
 from app.schemas import (
     AdminLoginRequest,
     AdminLoginResponse,
@@ -15,16 +17,31 @@ from app.schemas import (
     AssignmentResponse,
     AuditLogResponse,
     BehaviorEventResponse,
+    ChatMessageResponse,
+    DialogueProgressResponse,
+    DialogueStateResponse,
+    FinishDialogueResponse,
     ParticipantEntryRequest,
     ParticipantEntryResponse,
     ParticipantImportRequest,
     ParticipantImportResponse,
+    QuestionnaireDefinitionResponse,
+    QuestionnaireItemResponse,
+    QuestionnaireScoreResponse,
+    QuestionnaireSubmitRequest,
+    QuestionnaireSubmitResponse,
+    ResetQuestionnaireRequest,
+    ScaleProfileResponse,
+    SendMessageRequest,
+    SendMessageResponse,
     TransitionRequest,
 )
 from app.services import (
+    DialogueService,
     ExperimentSessionService,
     GroupAssignmentService,
     ParticipantRegistryService,
+    QuestionnaireService,
     log_audit,
     to_session_response,
     to_status_row,
@@ -198,3 +215,198 @@ def create_or_get_assignment(session_id: str, db: Session = Depends(get_session)
         assignment_source=session.assignment_source,
         assignment_locked=session.assignment_locked,
     )
+
+
+def _get_session_and_participant(db: Session, session_id: str) -> tuple[ExperimentSession, Participant]:
+    session = db.get(ExperimentSession, session_id)
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment Session not found")
+    participant = db.get(Participant, session.participant_id)
+    if participant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Participant not found")
+    return session, participant
+
+
+def _scale_response(scale_key: str) -> ScaleProfileResponse:
+    scale = SCALE_PROFILES[scale_key]
+    return ScaleProfileResponse(
+        key=scale.key,
+        value_type=scale.value_type,
+        min_value=scale.min_value,
+        max_value=scale.max_value,
+        labels=scale.labels,
+        options=list(scale.options),
+    )
+
+
+def _score_response(score: QuestionnaireScore) -> QuestionnaireScoreResponse:
+    return QuestionnaireScoreResponse(
+        instrument=score.instrument,
+        dimension=score.dimension,
+        score=score.score,
+        valid_items=score.valid_items,
+        missing_items=list(score.missing_items),
+        attention_check_passed=score.attention_check_passed,
+    )
+
+
+def _chat_message_response(message: ChatMessage) -> ChatMessageResponse:
+    return ChatMessageResponse(
+        id=message.id,
+        message_index=message.message_index,
+        role=message.role,
+        content=message.content,
+        provider_name=message.provider_name,
+        model_name=message.model_name,
+        system_prompt_version=message.system_prompt_version,
+        generation_params=message.generation_params,
+        duration_ms=message.duration_ms,
+        retry_count=message.retry_count,
+        error_code=message.error_code,
+        error_message_sanitized=message.error_message_sanitized,
+        created_at=message.created_at,
+    )
+
+
+def _progress_response(progress: dict[str, object]) -> DialogueProgressResponse:
+    return DialogueProgressResponse(
+        participant_turn_count=int(progress["participant_turn_count"]),
+        dialogue_elapsed_seconds=int(progress["dialogue_elapsed_seconds"]),
+        met_min_turns=bool(progress["met_min_turns"]),
+        met_min_duration=bool(progress["met_min_duration"]),
+        eligible_to_finish=bool(progress["eligible_to_finish"]),
+        required_participant_turns=DialogueService.MIN_PARTICIPANT_TURNS,
+        required_elapsed_seconds=DialogueService.MIN_ELAPSED_SECONDS,
+    )
+
+
+@app.get("/api/participant/sessions/{session_id}/questionnaires/{phase}", response_model=QuestionnaireDefinitionResponse)
+def questionnaire_definition(session_id: str, phase: str, db: Session = Depends(get_session)) -> QuestionnaireDefinitionResponse:
+    if phase not in {"pre", "post"}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown questionnaire phase")
+    session, _participant = _get_session_and_participant(db, session_id)
+    if phase == "post" and session.status != "chat_completed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Post-survey is available only after dialogue completion")
+    if phase == "pre" and session.status not in {"not_started", "reset_required"} and not QuestionnaireService.active_responses(db, session_id=session.id, phase="pre"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pre-survey is not available")
+    items = QuestionnaireService.get_definition(phase)  # type: ignore[arg-type]
+    locked = bool(QuestionnaireService.active_responses(db, session_id=session.id, phase=phase))  # type: ignore[arg-type]
+    used_scales = {item.scale for item in items}
+    return QuestionnaireDefinitionResponse(
+        questionnaire_version=QUESTIONNAIRE_VERSION,
+        phase=phase,  # type: ignore[arg-type]
+        locked=locked,
+        items=[
+            QuestionnaireItemResponse(
+                phase=item.phase,
+                order=item.order,
+                item_key=item.item_key,
+                item_text=item.item_text,
+                item_type=item.item_type,
+                scale=item.scale,
+                instrument=item.instrument,
+                dimension=item.dimension,
+                reverse_scored=item.reverse_scored,
+                required=item.required,
+                attention_check=item.attention_check,
+            )
+            for item in items
+        ],
+        scales={scale_key: _scale_response(scale_key) for scale_key in sorted(used_scales)},
+    )
+
+
+@app.post("/api/participant/sessions/{session_id}/questionnaires/{phase}/submit", response_model=QuestionnaireSubmitResponse)
+def submit_questionnaire(
+    session_id: str,
+    phase: str,
+    payload: QuestionnaireSubmitRequest,
+    db: Session = Depends(get_session),
+) -> QuestionnaireSubmitResponse:
+    if phase not in {"pre", "post"}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown questionnaire phase")
+    session, participant = _get_session_and_participant(db, session_id)
+    responses, scores = QuestionnaireService.submit(
+        db,
+        session=session,
+        participant=participant,
+        phase=phase,  # type: ignore[arg-type]
+        responses=payload.responses,
+    )
+    return QuestionnaireSubmitResponse(
+        phase=phase,  # type: ignore[arg-type]
+        questionnaire_version=QUESTIONNAIRE_VERSION,
+        locked=True,
+        response_count=len(responses),
+        scores=[_score_response(score) for score in scores],
+        session=to_session_response(participant, session),
+    )
+
+
+@app.post("/api/admin/sessions/{session_id}/questionnaires/{phase}/reset")
+def reset_questionnaire(
+    session_id: str,
+    phase: str,
+    payload: ResetQuestionnaireRequest,
+    admin_id: str = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, object]:
+    if phase not in {"pre", "post"}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown questionnaire phase")
+    session, participant = _get_session_and_participant(db, session_id)
+    QuestionnaireService.reset_phase(
+        db,
+        session=session,
+        participant=participant,
+        phase=phase,  # type: ignore[arg-type]
+        admin_id=admin_id,
+        reason=payload.reason,
+    )
+    return {"experiment_session_id": session.id, "phase": phase, "reset": True}
+
+
+@app.get("/api/participant/sessions/{session_id}/dialogue", response_model=DialogueStateResponse)
+def get_dialogue(session_id: str, db: Session = Depends(get_session)) -> DialogueStateResponse:
+    session, participant = _get_session_and_participant(db, session_id)
+    messages = DialogueService.start_or_get(db, session=session, participant=participant)
+    progress = DialogueService.update_progress(db, session=session)
+    db.commit()
+    prompt = prompt_for_group(session.group or "")
+    return DialogueStateResponse(
+        experiment_session_id=session.id,
+        participant_code=participant.participant_code,
+        group=session.group,  # type: ignore[arg-type]
+        system_prompt_version=prompt.version,
+        status=session.status,
+        progress=_progress_response(progress),
+        messages=[_chat_message_response(message) for message in messages],
+    )
+
+
+@app.post("/api/participant/sessions/{session_id}/dialogue/messages", response_model=SendMessageResponse)
+def send_dialogue_message(
+    session_id: str,
+    payload: SendMessageRequest,
+    db: Session = Depends(get_session),
+) -> SendMessageResponse:
+    session, participant = _get_session_and_participant(db, session_id)
+    participant_message, assistant_message = DialogueService.send_message(
+        db, session=session, participant=participant, content=payload.content
+    )
+    progress = DialogueService.update_progress(db, session=session)
+    db.commit()
+    return SendMessageResponse(
+        participant_message=_chat_message_response(participant_message),
+        assistant_message=_chat_message_response(assistant_message),
+        progress=_progress_response(progress),
+        status=session.status,
+    )
+
+
+@app.post("/api/participant/sessions/{session_id}/dialogue/finish", response_model=FinishDialogueResponse)
+def finish_dialogue(session_id: str, db: Session = Depends(get_session)) -> FinishDialogueResponse:
+    session, participant = _get_session_and_participant(db, session_id)
+    DialogueService.finish(db, session=session, participant=participant)
+    progress = DialogueService.update_progress(db, session=session)
+    db.commit()
+    return FinishDialogueResponse(status=session.status, progress=_progress_response(progress))

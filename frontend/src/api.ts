@@ -27,6 +27,60 @@ export type ParticipantSession = {
   resume_count: number;
 };
 
+export type QuestionnaireItem = {
+  phase: 'pre' | 'post';
+  order: number;
+  item_key: string;
+  item_text: string;
+  item_type: string;
+  scale: string;
+  instrument: string;
+  dimension: string;
+  reverse_scored: boolean;
+  required: boolean;
+  attention_check: boolean;
+};
+
+export type ScaleProfile = {
+  key: string;
+  value_type: 'integer' | 'categorical';
+  min_value: number | null;
+  max_value: number | null;
+  labels: Record<string, string> | null;
+  options: string[];
+};
+
+export type QuestionnaireDefinition = {
+  questionnaire_version: string;
+  phase: 'pre' | 'post';
+  locked: boolean;
+  items: QuestionnaireItem[];
+  scales: Record<string, ScaleProfile>;
+};
+
+export type DialogueState = {
+  experiment_session_id: string;
+  participant_code: string;
+  group: 'experiment' | 'control';
+  system_prompt_version: string;
+  status: string;
+  progress: {
+    participant_turn_count: number;
+    dialogue_elapsed_seconds: number;
+    met_min_turns: boolean;
+    met_min_duration: boolean;
+    eligible_to_finish: boolean;
+    required_participant_turns: number;
+    required_elapsed_seconds: number;
+  };
+  messages: Array<{
+    id: string;
+    message_index: number;
+    role: string;
+    content: string;
+  }>;
+};
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
@@ -82,4 +136,37 @@ export function createAssignment(sessionId: string): Promise<{
   assignment_locked: boolean;
 }> {
   return request(`/api/participant/sessions/${sessionId}/assignment`, { method: 'POST' });
+}
+
+export function fetchQuestionnaire(sessionId: string, phase: 'pre' | 'post'): Promise<QuestionnaireDefinition> {
+  return request(`/api/participant/sessions/${sessionId}/questionnaires/${phase}`);
+}
+
+export function submitQuestionnaire(
+  sessionId: string,
+  phase: 'pre' | 'post',
+  responses: Record<string, string | number>
+): Promise<{ session: ParticipantSession; response_count: number; locked: boolean }> {
+  return request(`/api/participant/sessions/${sessionId}/questionnaires/${phase}/submit`, {
+    method: 'POST',
+    body: JSON.stringify({ responses })
+  });
+}
+
+export function fetchDialogue(sessionId: string): Promise<DialogueState> {
+  return request(`/api/participant/sessions/${sessionId}/dialogue`);
+}
+
+export function sendDialogueMessage(
+  sessionId: string,
+  content: string
+): Promise<{ progress: DialogueState['progress']; status: string }> {
+  return request(`/api/participant/sessions/${sessionId}/dialogue/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content })
+  });
+}
+
+export function finishDialogue(sessionId: string): Promise<{ status: string; progress: DialogueState['progress'] }> {
+  return request(`/api/participant/sessions/${sessionId}/dialogue/finish`, { method: 'POST' });
 }

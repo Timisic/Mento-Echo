@@ -16,6 +16,7 @@ from app.config import get_settings  # noqa: E402
 from app.db import get_engine, reset_engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -26,6 +27,7 @@ def reset_database() -> None:
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
+    Base.metadata.drop_all(bind=engine)
     reset_engine()
 
 
@@ -48,3 +50,9 @@ def admin_headers(client: TestClient) -> dict[str, str]:
 
 def import_participants(client: TestClient, admin_headers: dict[str, str], rows: list[dict[str, str | None]]):
     return client.post("/api/admin/participants/import", headers=admin_headers, json={"participants": rows})
+
+
+@pytest.fixture
+def db_session() -> Session:
+    with Session(get_engine()) as session:
+        yield session

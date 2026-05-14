@@ -60,3 +60,5 @@ Copy `.env.example` to `.env` for local overrides. The MVP uses a single researc
 - Participant entry accepts known participant codes, rejects unknown codes neutrally, creates/resumes one recoverable Experiment Session, and logs behavior events.
 - Group Assignment honors imported assignments, randomizes blank assignments once, records `assignment_source`, and locks the result.
 - Admin status API exposes participant code, session status, group, assignment source, timestamps, resume count, and last seen time.
+- Versioned pre/post questionnaires render from `mentor_echo_questionnaire_v2026_05_14_hitl_map`, lock on submission, store raw response metadata, and compute derived scores plus attention-check status.
+- AI Dialogue starts only after pre-survey submission and locked assignment, selects the experiment/control prompt, stores participant and assistant messages with provider/model/prompt metadata, and enforces 10 participant turns plus 15 elapsed minutes before post-survey access.
