@@ -8,6 +8,7 @@ Recommended order:
 2. `01-foundation-registry-session-assignment.md` — platform scaffold, admin import, participant entry, session state, assignment.
 3. `02-questionnaire-and-ai-dialogue.md` — versioned questionnaire flow plus AI dialogue/completion, after Goal 0 and Goal 1.
 4. `03-admin-export-pilot-readiness.md` — dashboard, logs, exports, E2E pilot readiness, after Goal 2.
+5. `04-frontend-pilot-ux-questionnaire-hitl.md` — pilot-ready Chinese frontend plus questionnaire HITL sign-off, after Goal 3 and blocked by Issue #6 sign-off.
 
 Optional:
 
@@ -35,3 +36,4 @@ Every goal should begin by reading:
 - Questionnaire flow/scoring: https://github.com/Timisic/Mento-Echo/issues/7
 - AI Dialogue/completion: https://github.com/Timisic/Mento-Echo/issues/8
 - Admin/logging/export/pilot: https://github.com/Timisic/Mento-Echo/issues/9
+- Frontend pilot UX + questionnaire HITL sign-off: https://github.com/Timisic/Mento-Echo/issues/10
