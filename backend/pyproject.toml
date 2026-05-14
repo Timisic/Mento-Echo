@@ -1,0 +1,31 @@
+[project]
+name = "mentor-echo-backend"
+version = "0.1.0"
+description = "FastAPI backend for the Mentor Echo experiment platform"
+requires-python = ">=3.11"
+dependencies = [
+  "alembic>=1.16,<2.0",
+  "fastapi>=0.115,<1.0",
+  "pg8000>=1.31,<2.0",
+  "pydantic-settings>=2.8,<3.0",
+  "sqlalchemy>=2.0,<3.0",
+  "uvicorn[standard]>=0.34,<1.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1.0",
+  "pytest>=8.3,<9.0",
+  "pytest-cov>=6.0,<7.0"
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+
+[tool.setuptools.packages.find]
+include = ["app*"]
