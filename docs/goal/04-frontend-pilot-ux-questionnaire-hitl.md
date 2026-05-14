@@ -16,6 +16,18 @@ Turn the current functional tracer frontend into a pilot-usable Chinese experime
 
 Frontend style and interaction improvements may proceed before questionnaire sign-off. Questionnaire wording, item count, item mapping, scoring rules, and questionnaire version must not be silently changed until Issue #6 is explicitly confirmed or corrected.
 
+## Confirmed product / UX decisions
+
+Confirmed with the researcher on 2026-05-14:
+
+1. **Goal 04 owns information architecture and interaction, not final visual polish.** This goal defines role separation, experiment flow, key UI components, questionnaire interaction, dialogue completion rules, researcher operations, and acceptance criteria. Final visual style, color, typography, spacing, motion, and high-fidelity polish may be refined later by a frontend style/design skill, as long as that work does not change this contract.
+2. **Participant-facing screens fully hide group information.** Participants must not see experiment/control labels, assignment source, experiment session ID, system prompt version, backend status fields, provider metadata, export controls, reset/exclusion controls, or other researcher/admin internals.
+3. **Participant flow is system-controlled and one-way.** Participants may refresh and resume the current stage, but they must not manually skip stages, enter post-survey early, or resubmit locked questionnaires.
+4. **Questionnaires are grouped by theme/scale, not exposed as one raw long list.** If a section is long, split it further into smaller pages. Participant-facing section titles should use neutral Chinese labels rather than English instrument names such as U-MICS or DIDS.
+5. **MVP questionnaire filling does not require backend autosave per item.** Answers should persist while navigating within the frontend session; warn before refresh/navigation when there are unsaved answers; validate missing responses before submit; keep answers available after submit failure; show submitted-and-locked state after success.
+6. **Researcher dashboard does not show full raw chat by default.** It shows progress/status/operation fields only. Raw chat remains available through the sensitive export package with explicit confirmation, not as inline dashboard content.
+7. **Visual tone should be trustworthy, quiet, and low-interference.** The UI should feel like a research experiment platform, not a therapy app, counseling product, or strongly companion-like AI product. Use warm but neutral copy and avoid promises that the AI will solve identity or life problems.
+
 ## Why this goal exists
 
 The backend MVP now has the core experimental lifecycle, data model, audit/event logging, export package, and local startup path. The frontend, however, is still mostly a single-page operational tracer that exposes backend fields and buttons. That is useful for development but not enough for real participants or a researcher-facing pilot.
@@ -48,13 +60,13 @@ Mentor Echo AI 对话实验平台
 [我是研究者，进入管理后台]
 ```
 
-Participant-facing screens must not show admin operations, assignment internals, export controls, reset/exclusion buttons, or technical provider metadata.
+Participant-facing screens must not show admin operations, assignment internals, experiment/control labels, assignment source, experiment session ID, system prompt version, backend status fields, export controls, reset/exclusion buttons, technical provider metadata, or any other researcher/admin internals.
 
 Researcher-facing screens must require login before showing import, dashboard, reset, exclusion, export, audit/behavior summaries, or sensitive-data actions.
 
 ### 2. Participant flow
 
-Participant UI should be a staged Chinese flow:
+Participant UI should be a staged, system-controlled Chinese flow. The system decides the current stage from experiment-session state; participants can refresh and resume, but cannot jump ahead manually:
 
 1. 被试编号进入；
 2. 实验说明 / 欢迎指导语；
@@ -158,7 +170,7 @@ Categorical items should use visible option buttons/cards instead of dropdowns:
 
 ### 5. Questionnaire grouping / pagination
 
-Avoid rendering dozens of items as one long plain list. Use grouped or paginated sections with progress.
+Avoid rendering dozens of items as one long plain list. Use grouped or paginated sections with progress. Group by theme/scale first; split long sections into smaller pages only when needed. Use neutral Chinese section titles instead of exposing instrument names such as U-MICS or DIDS to participants.
 
 Suggested pre-survey sections:
 
@@ -237,7 +249,7 @@ The AI may summarize, but UI copy must make clear that completion is determined 
 
 ### 7. Researcher dashboard UI
 
-Researcher dashboard should be more than a raw table.
+Researcher dashboard should be more than a raw table, but it must not show full raw chat by default. Raw chat remains available through the sensitive export package with explicit confirmation, not inline dashboard browsing.
 
 Top summary cards:
 
@@ -308,7 +320,17 @@ App
     └── ExportPanel
 ```
 
-Keep reusable UI small and local unless a clear abstraction emerges.
+Keep reusable UI small and local unless a clear abstraction emerges. A later frontend style/design pass may refine visual polish, color, typography, spacing, and motion without changing the role boundaries, stage order, questionnaire rules, or sensitive-data boundaries defined here.
+
+### 9. Visual tone boundary
+
+Use a trustworthy, quiet, low-interference research-platform tone.
+
+- Participant side: warm, clear, low-pressure, and neutral.
+- Researcher side: research-ops dashboard style with traceable actions and audit awareness.
+- Avoid therapy/counseling product framing, strong companion branding, excessive anthropomorphic animation, or promises that the AI will solve identity or life problems.
+- Use copy such as “请根据页面中的 AI 回应自然对话” rather than intervention-heavy claims.
+- Prefer restrained colors, readable typography, clear spacing, visible focus states, and minimal motion.
 
 ## Scope
 
@@ -328,7 +350,7 @@ Keep reusable UI small and local unless a clear abstraction emerges.
 7. Replace categorical questionnaire dropdowns with visible option buttons/cards.
 8. Group or paginate questionnaires with progress and submit confirmation.
 9. Implement chat-like dialogue UI with visible 10-turn + 15-minute progress.
-10. Implement researcher dashboard summary cards, operational table, action dialogs, and export sensitive-data warning.
+10. Implement researcher dashboard summary cards, operational table, action dialogs, and export sensitive-data warning; do not expose full raw chat inline by default.
 11. Ensure all error/loading/success/blocked messages are Chinese and user-facing.
 12. Add or update frontend tests for key participant and researcher paths.
 13. Keep backend regression coverage green after any questionnaire or API changes.
@@ -342,6 +364,9 @@ Keep reusable UI small and local unless a clear abstraction emerges.
 - Keep PostgreSQL as the source of truth.
 - If questionnaire wording/scoring changes, create a new questionnaire version instead of silently mutating the existing version.
 - Frontend UI/UX implementation can proceed before #6 sign-off, but questionnaire content/scoring/version changes cannot.
+- Goal 04 may be implemented before final visual styling, but must preserve the confirmed information architecture and interaction rules.
+- Participant-facing UI must remain blinded to group assignment and administrative internals.
+- Visual styling must not turn the platform into a counseling, therapy, or strongly companion-like product.
 
 ## Validation evidence
 

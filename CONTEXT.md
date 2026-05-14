@@ -93,6 +93,7 @@ _Avoid_: Multi-role staff, coder account
 - A **Participant Code** has at most one active **Experiment Session**.
 - An **Experiment Session** belongs to exactly one **Group Assignment** once assignment is determined.
 - A **Group Assignment** is either an **Imported Assignment** or a **Randomized Assignment**.
+- The participant-facing experience is blinded to **Group Assignment** labels and assignment source; only the **Researcher Administrator** should see those operational details.
 - A **Pre-survey** must be submitted before the **AI Dialogue** starts.
 - A **Post-survey** must be submitted after the **AI Dialogue** is complete.
 - **Dialogue Completion Eligibility** requires both 10 participant turns and 15 elapsed minutes.
