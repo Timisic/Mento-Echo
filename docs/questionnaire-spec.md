@@ -10,6 +10,12 @@
 
 The MVP treats questionnaires as versioned structured configuration. The admin UI does not edit questions or options.
 
+The final AFK-ready item/scoring map for the current source snapshot is
+[`docs/questionnaire-implementation-map.md`](./questionnaire-implementation-map.md).
+Use that map as the implementation authority for item keys, normalized anchors,
+dimension names, attention-check pass criteria, and the participant-code-only
+privacy rule.
+
 Each rendered questionnaire item should be defined with at least:
 
 | Field | Meaning |
@@ -83,10 +89,16 @@ Recommended derived score records:
 
 `analysis_dataset.csv` should include one row per participant with pre scores, post scores, and change scores for each exported dimension.
 
-## Known source issues to verify before final implementation
+## Source issues resolved by the final map
 
-These are source-document observations, not resolved product questions:
+The source-document observations below are resolved or explicitly accepted in
+[`docs/questionnaire-implementation-map.md`](./questionnaire-implementation-map.md):
 
-- The post-survey Markdown conversion shows two adjacent items with identical text: “我会因为未来发展方向不清楚而感到困扰。” Verify whether one should instead be the professional/study/career choice item from the pre-survey.
-- Scale anchor wording should be normalized before implementation. For example, one table uses `5完全符合` where the surrounding instruction says severity from `完全没有` to `非常严重`.
-- The final scoring dimensions for U-MICS, DIDS, BPNSFS, perceived AI competence, and AI anthropomorphism should be confirmed against the intended validated/adapted scoring rules before statistical analysis.
+- The adjacent repeated post-survey identity-distress text is treated as a
+  source typo. `post_identity_distress_02` uses the missing parallel
+  professional/study/career-choice wording from the pre-survey.
+- Identity-distress anchors are normalized to `1=完全没有` through
+  `5=非常严重`.
+- U-MICS, DIDS, BPNSFS adapted dialogue experience, perceived AI competence,
+  AI anthropomorphism, reverse-scoring flags, attention checks, required flags,
+  and participant-name omission are explicitly mapped for implementation.

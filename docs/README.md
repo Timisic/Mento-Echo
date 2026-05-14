@@ -5,7 +5,10 @@ This directory contains the Markdown source of truth for the MVP experiment plat
 ## Canonical MVP docs
 
 - [MVP specification](./mvp-spec.md) — product scope, flow, backend rules, admin requirements, and acceptance criteria.
+- [MVP PRD](./prd/mvp-experiment-platform.md) — GitHub-published product requirements document for implementation planning.
+- [Codex goals](./goal/README.md) — execution prompts grouped into practical Codex goal runs.
 - [Questionnaire implementation spec](./questionnaire-spec.md) — how the Word questionnaire is interpreted for the MVP.
+- [Questionnaire implementation map](./questionnaire-implementation-map.md) — AFK-ready item keys, scales, dimensions, scoring rules, and HITL source-issue resolutions.
 - [Data export spec](./data-export-spec.md) — ZIP contents, required files, and analysis dataset shape.
 - [Interview decisions](./mvp-interview-decisions.md) — the 15 resolved planning questions from the grill-with-docs session.
 - [Domain context](../CONTEXT.md) — glossary and domain relationships.
