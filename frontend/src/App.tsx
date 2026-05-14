@@ -21,8 +21,34 @@ import {
 } from './api';
 import './styles.css';
 
+const statusLabels: Record<string, string> = {
+  not_started: '未开始',
+  pre_survey_submitted: '前测已提交',
+  chat_in_progress: '对话进行中',
+  chat_eligible_to_finish: '对话已达标',
+  chat_completed: '对话已完成',
+  completed: '实验已完成',
+  reset_required: '需要重置',
+  excluded: '已排除'
+};
+
+const groupLabels: Record<string, string> = {
+  experiment: '实验组',
+  control: '控制组'
+};
+
+const sourceLabels: Record<string, string> = {
+  imported: '导入指定',
+  randomized: '系统随机'
+};
+
+function labelFor(labels: Record<string, string>, value: string | null | undefined): string {
+  if (!value) return '—';
+  return labels[value] ?? value;
+}
+
 function App() {
-  const [health, setHealth] = useState('Checking backend…');
+  const [health, setHealth] = useState('正在检查后端…');
   const [adminToken, setAdminToken] = useState('');
   const [adminMessage, setAdminMessage] = useState('');
   const [adminActionReason, setAdminActionReason] = useState('');
@@ -37,9 +63,9 @@ function App() {
   useEffect(() => {
     fetchHealth()
       .then((data) => {
-        setHealth(`Backend ${data.app}; database ${data.database.ok ? 'ok' : 'unavailable'}`);
+        setHealth(`后端 ${data.app}；数据库${data.database.ok ? '正常' : '不可用'}`);
       })
-      .catch((error: Error) => setHealth(`Backend unavailable: ${error.message}`));
+      .catch((error: Error) => setHealth(`后端不可用：${error.message}`));
   }, []);
 
   async function handleAdminLogin(event: FormEvent<HTMLFormElement>) {
@@ -49,7 +75,7 @@ function App() {
     const password = String(data.get('password') ?? '');
     const login = await adminLogin(username, password);
     setAdminToken(login.token);
-    setAdminMessage('Admin signed in.');
+    setAdminMessage('研究者已登录。');
   }
 
   async function handleImport(event: FormEvent<HTMLFormElement>) {
@@ -60,7 +86,7 @@ function App() {
     const result = await importParticipants(adminToken, [
       { participant_code: participantCode, assigned_group: assignedGroup }
     ]);
-    setAdminMessage(`Imported ${result.imported_count} participant code(s).`);
+    setAdminMessage(`已导入 ${result.imported_count} 个被试编号。`);
     await refreshStatus(adminToken);
   }
 
@@ -72,21 +98,21 @@ function App() {
 
   async function handleResetPreSurvey(sessionId: string) {
     if (!adminToken || !adminActionReason.trim()) {
-      setAdminMessage('Reset requires an audit reason.');
+      setAdminMessage('重置前请填写审计原因。');
       return;
     }
     await resetPreSurvey(adminToken, sessionId, adminActionReason);
-    setAdminMessage('Pre-survey reset recorded with audit reason.');
+    setAdminMessage('前测已重置，审计原因已记录。');
     await refreshStatus();
   }
 
   async function handleExcludeSession(sessionId: string) {
     if (!adminToken || !adminActionReason.trim()) {
-      setAdminMessage('Exclusion requires an audit reason.');
+      setAdminMessage('排除前请填写排除原因。');
       return;
     }
     await markSessionExcluded(adminToken, sessionId, adminActionReason);
-    setAdminMessage('Session excluded and audited.');
+    setAdminMessage('实验会话已标记为排除，并已记录审计日志。');
     await refreshStatus();
   }
 
@@ -99,7 +125,7 @@ function App() {
     link.download = `mentor-echo-export-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
     link.click();
     URL.revokeObjectURL(url);
-    setAdminMessage('Export ZIP generated. Raw chat is sensitive and separated from analysis_dataset.csv.');
+    setAdminMessage('导出 ZIP 已生成。原始聊天为敏感数据，已与 analysis_dataset.csv 分离。');
     await refreshStatus();
   }
 
@@ -109,7 +135,9 @@ function App() {
     const participantCode = String(data.get('participant_code') ?? '');
     const result = await enterParticipantCode(participantCode);
     setParticipantSession(result.session);
-    setParticipantMessage(`Session ${result.session.status}; assignment locked: ${result.session.assignment_locked}`);
+    setParticipantMessage(
+      `实验会话状态：${labelFor(statusLabels, result.session.status)}；分组已锁定：${result.session.assignment_locked ? '是' : '否'}`
+    );
     setQuestionnaire(null);
     setDialogue(null);
   }
@@ -123,7 +151,9 @@ function App() {
       assignment_source: assignment.assignment_source,
       assignment_locked: assignment.assignment_locked
     });
-    setParticipantMessage(`Assignment locked: ${assignment.group} (${assignment.assignment_source})`);
+    setParticipantMessage(
+      `分组已锁定：${labelFor(groupLabels, assignment.group)}（${labelFor(sourceLabels, assignment.assignment_source)}）`
+    );
     await refreshStatus();
   }
 
@@ -149,7 +179,9 @@ function App() {
       questionnaireResponses
     );
     setParticipantSession(result.session);
-    setParticipantMessage(`${questionnaire.phase}-survey submitted and locked (${result.response_count} responses).`);
+    setParticipantMessage(
+      `${questionnaire.phase === 'pre' ? '前测' : '后测'}已提交并锁定（${result.response_count} 条回答）。`
+    );
     setQuestionnaire({ ...questionnaire, locked: true });
     await refreshStatus();
   }
@@ -158,7 +190,9 @@ function App() {
     if (!participantSession) return;
     const state = await fetchDialogue(participantSession.experiment_session_id);
     setDialogue(state);
-    setParticipantMessage(`Dialogue started for ${state.group}; prompt ${state.system_prompt_version}.`);
+    setParticipantMessage(
+      `AI 对话已开始：${labelFor(groupLabels, state.group)}；提示词版本 ${state.system_prompt_version}。`
+    );
   }
 
   async function handleSendDialogueMessage(event: FormEvent<HTMLFormElement>) {
@@ -177,7 +211,7 @@ function App() {
     setParticipantSession({ ...participantSession, status: result.status });
     const state = await fetchDialogue(participantSession.experiment_session_id).catch(() => null);
     if (state) setDialogue(state);
-    setParticipantMessage(`Dialogue status: ${result.status}`);
+    setParticipantMessage(`对话状态：${labelFor(statusLabels, result.status)}`);
     await refreshStatus();
   }
 
@@ -185,71 +219,71 @@ function App() {
     <main>
       <header>
         <p className="eyebrow">Mentor Echo MVP</p>
-        <h1>Experiment foundation tracer</h1>
+        <h1>AI 对话实验平台</h1>
         <p data-testid="health-status" className="health">{health}</p>
       </header>
 
       <section aria-labelledby="admin-heading" className="panel">
-        <h2 id="admin-heading">Researcher administrator</h2>
+        <h2 id="admin-heading">研究者管理端</h2>
         <form onSubmit={handleAdminLogin} className="row-form">
-          <input name="username" placeholder="username" defaultValue="researcher" aria-label="admin username" />
-          <input name="password" placeholder="password" type="password" aria-label="admin password" />
-          <button type="submit">Sign in</button>
+          <input name="username" placeholder="研究者账号" defaultValue="researcher" aria-label="研究者账号" />
+          <input name="password" placeholder="研究者密码" type="password" aria-label="研究者密码" />
+          <button type="submit">登录</button>
         </form>
         <form onSubmit={handleImport} className="row-form">
-          <input name="participant_code" placeholder="participant code" aria-label="import participant code" />
-          <select name="assigned_group" aria-label="assigned group" defaultValue="">
-            <option value="">Randomize later</option>
-            <option value="experiment">Experiment</option>
-            <option value="control">Control</option>
+          <input name="participant_code" placeholder="被试编号" aria-label="导入被试编号" />
+          <select name="assigned_group" aria-label="分组" defaultValue="">
+            <option value="">稍后随机分组</option>
+            <option value="experiment">实验组</option>
+            <option value="control">控制组</option>
           </select>
-          <button type="submit" disabled={!adminToken}>Import</button>
-          <button type="button" disabled={!adminToken} onClick={() => refreshStatus()}>Refresh status</button>
-          <button type="button" disabled={!adminToken} onClick={handleExportPackage}>Export ZIP</button>
+          <button type="submit" disabled={!adminToken}>导入被试</button>
+          <button type="button" disabled={!adminToken} onClick={() => refreshStatus()}>刷新状态</button>
+          <button type="button" disabled={!adminToken} onClick={handleExportPackage}>导出 ZIP</button>
         </form>
         <label className="stacked-field">
-          Audit / exclusion reason
+          审计 / 排除原因
           <input
             value={adminActionReason}
             onChange={(event) => setAdminActionReason(event.target.value)}
-            placeholder="Required before reset or exclusion"
-            aria-label="admin action reason"
+            placeholder="重置或排除前必须填写原因"
+            aria-label="管理员操作原因"
           />
         </label>
         <p>{adminMessage}</p>
         <table>
           <thead>
             <tr>
-              <th>Participant Code</th>
-              <th>Status</th>
-              <th>Group</th>
-              <th>Source</th>
-              <th>Surveys</th>
-              <th>Turns</th>
-              <th>Elapsed</th>
-              <th>Eligibility</th>
-              <th>Completion</th>
-              <th>Exclusion</th>
-              <th>Resume Count</th>
-              <th>Last Seen</th>
-              <th>Controls</th>
+              <th>被试编号</th>
+              <th>状态</th>
+              <th>分组</th>
+              <th>来源</th>
+              <th>问卷</th>
+              <th>轮次</th>
+              <th>时长</th>
+              <th>完成资格</th>
+              <th>完成情况</th>
+              <th>排除状态</th>
+              <th>恢复次数</th>
+              <th>最后访问</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
             {statusRows.map((row) => (
               <tr key={row.participant_code}>
                 <td>{row.participant_code}</td>
-                <td>{row.status}</td>
-                <td>{row.group ?? '—'}</td>
-                <td>{row.assignment_source ?? '—'}</td>
+                <td>{labelFor(statusLabels, row.status)}</td>
+                <td>{labelFor(groupLabels, row.group)}</td>
+                <td>{labelFor(sourceLabels, row.assignment_source)}</td>
                 <td>
-                  pre {row.pre_survey_submitted ? '✓' : '—'} / post {row.post_survey_submitted ? '✓' : '—'}
+                  前测 {row.pre_survey_submitted ? '✓' : '—'} / 后测 {row.post_survey_submitted ? '✓' : '—'}
                 </td>
                 <td>{row.participant_turn_count}</td>
-                <td>{row.dialogue_elapsed_minutes} min</td>
-                <td>{row.dialogue_completion_eligible ? 'eligible' : 'not eligible'}</td>
-                <td>{row.completed ? 'completed' : row.dialogue_completed ? 'dialogue done' : 'incomplete'}</td>
-                <td>{row.excluded ? `excluded: ${row.exclusion_reason ?? ''}` : 'included'}</td>
+                <td>{row.dialogue_elapsed_minutes} 分钟</td>
+                <td>{row.dialogue_completion_eligible ? '已达标' : '未达标'}</td>
+                <td>{row.completed ? '实验完成' : row.dialogue_completed ? '对话完成' : '未完成'}</td>
+                <td>{row.excluded ? `已排除：${row.exclusion_reason ?? ''}` : '纳入'}</td>
                 <td>{row.resume_count}</td>
                 <td>{row.last_seen_at ? new Date(row.last_seen_at).toLocaleString() : '—'}</td>
                 <td>
@@ -258,14 +292,14 @@ function App() {
                     disabled={!row.experiment_session_id}
                     onClick={() => row.experiment_session_id && handleResetPreSurvey(row.experiment_session_id)}
                   >
-                    Reset pre
+                    重置前测
                   </button>
                   <button
                     type="button"
                     disabled={!row.experiment_session_id || row.excluded}
                     onClick={() => row.experiment_session_id && handleExcludeSession(row.experiment_session_id)}
                   >
-                    Exclude
+                    排除
                   </button>
                 </td>
               </tr>
@@ -275,36 +309,36 @@ function App() {
       </section>
 
       <section aria-labelledby="participant-heading" className="panel">
-        <h2 id="participant-heading">Participant entry</h2>
+        <h2 id="participant-heading">被试入口</h2>
         <form onSubmit={handleParticipantEntry} className="row-form">
-          <input name="participant_code" placeholder="participant code" aria-label="participant code" />
-          <button type="submit">Enter</button>
+          <input name="participant_code" placeholder="被试编号" aria-label="被试编号" />
+          <button type="submit">进入实验</button>
         </form>
         <button type="button" disabled={!participantSession} onClick={handleAssignment}>
-          Create/confirm locked assignment
+          创建 / 确认锁定分组
         </button>
         <p>{participantMessage}</p>
         {participantSession ? (
           <dl>
-            <dt>Participant Code</dt>
+            <dt>被试编号</dt>
             <dd>{participantSession.participant_code}</dd>
-            <dt>Experiment Session</dt>
+            <dt>实验会话</dt>
             <dd>{participantSession.experiment_session_id}</dd>
-            <dt>Group</dt>
-            <dd>{participantSession.group ?? 'not assigned yet'}</dd>
-            <dt>Assignment Source</dt>
-            <dd>{participantSession.assignment_source ?? 'not assigned yet'}</dd>
+            <dt>分组</dt>
+            <dd>{labelFor(groupLabels, participantSession.group)}</dd>
+            <dt>分组来源</dt>
+            <dd>{labelFor(sourceLabels, participantSession.assignment_source)}</dd>
           </dl>
         ) : null}
         <div className="stage-actions">
           <button type="button" disabled={!participantSession} onClick={() => loadQuestionnaire('pre')}>
-            Load pre-survey
+            加载前测问卷
           </button>
           <button type="button" disabled={!participantSession} onClick={handleStartDialogue}>
-            Start / resume AI Dialogue
+            开始 / 继续 AI 对话
           </button>
           <button type="button" disabled={!participantSession} onClick={() => loadQuestionnaire('post')}>
-            Load post-survey
+            加载后测问卷
           </button>
         </div>
       </section>
@@ -312,9 +346,9 @@ function App() {
       {questionnaire ? (
         <section aria-labelledby="questionnaire-heading" className="panel">
           <h2 id="questionnaire-heading">
-            {questionnaire.phase === 'pre' ? 'Pre-survey' : 'Post-survey'}
+            {questionnaire.phase === 'pre' ? '前测问卷' : '后测问卷'}
           </h2>
-          <p>Version: {questionnaire.questionnaire_version}</p>
+          <p>版本：{questionnaire.questionnaire_version}</p>
           <form onSubmit={handleQuestionnaireSubmit}>
             <div className="questionnaire-list">
               {questionnaire.items.map((item) => {
@@ -363,7 +397,7 @@ function App() {
               })}
             </div>
             <button type="submit" disabled={questionnaire.locked}>
-              Submit and lock {questionnaire.phase}-survey
+              提交并锁定{questionnaire.phase === 'pre' ? '前测' : '后测'}
             </button>
           </form>
         </section>
@@ -371,35 +405,35 @@ function App() {
 
       {dialogue ? (
         <section aria-labelledby="dialogue-heading" className="panel">
-          <h2 id="dialogue-heading">AI Dialogue</h2>
+          <h2 id="dialogue-heading">AI 对话</h2>
           <p>
-            Progress: {dialogue.progress.participant_turn_count}/{dialogue.progress.required_participant_turns}
-            {' '}participant turns; {dialogue.progress.dialogue_elapsed_seconds}/{dialogue.progress.required_elapsed_seconds}
-            {' '}seconds.
+            进度：{dialogue.progress.participant_turn_count}/{dialogue.progress.required_participant_turns}
+            {' '}条被试消息；{dialogue.progress.dialogue_elapsed_seconds}/{dialogue.progress.required_elapsed_seconds}
+            {' '}秒。
           </p>
           <p data-testid="finish-eligibility">
-            Finish eligibility: {dialogue.progress.eligible_to_finish ? 'eligible' : 'not eligible'}
+            完成资格：{dialogue.progress.eligible_to_finish ? '已达标' : '未达标'}
           </p>
           <div className="messages">
             {dialogue.messages.map((message) => (
-              <p key={message.id}><strong>{message.role}:</strong> {message.content}</p>
+              <p key={message.id}><strong>{message.role === 'participant' ? '被试' : 'AI'}：</strong> {message.content}</p>
             ))}
           </div>
           <form onSubmit={handleSendDialogueMessage} className="row-form">
             <input
-              aria-label="dialogue message"
+              aria-label="对话内容"
               value={dialogueInput}
               onChange={(event) => setDialogueInput(event.target.value)}
-              placeholder="Type your dialogue message"
+              placeholder="输入你的对话内容"
             />
-            <button type="submit">Send</button>
+            <button type="submit">发送</button>
           </form>
           <button
             type="button"
             disabled={!dialogue.progress.eligible_to_finish}
             onClick={handleFinishDialogue}
           >
-            Finish dialogue / enter post-survey
+            结束对话 / 进入后测
           </button>
         </section>
       ) : null}

@@ -18,7 +18,14 @@ from app.config import get_settings  # noqa: E402
 from app.db import get_engine, reset_engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
+
+
+def drop_test_schema(engine) -> None:
+    Base.metadata.drop_all(bind=engine)
+    with engine.begin() as connection:
+        connection.execute(text("drop table if exists alembic_version"))
 
 
 @pytest.fixture(autouse=True)
@@ -26,10 +33,10 @@ def reset_database() -> None:
     get_settings.cache_clear()
     reset_engine()
     engine = get_engine()
-    Base.metadata.drop_all(bind=engine)
+    drop_test_schema(engine)
     Base.metadata.create_all(bind=engine)
     yield
-    Base.metadata.drop_all(bind=engine)
+    drop_test_schema(engine)
     reset_engine()
 
 
