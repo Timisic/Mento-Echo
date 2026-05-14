@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import get_settings
 from app.db import database_health, get_session
 from app.ai_provider import prompt_for_group
+from app.export_service import build_export_zip
 from app.models import AuditLog, BehaviorEvent, ChatMessage, ExperimentSession, Participant, QuestionnaireScore
 from app.questionnaire_config import QUESTIONNAIRE_VERSION, SCALE_PROFILES
 from app.schemas import (
@@ -20,6 +21,8 @@ from app.schemas import (
     ChatMessageResponse,
     DialogueProgressResponse,
     DialogueStateResponse,
+    ExcludeSessionRequest,
+    ExcludeSessionResponse,
     FinishDialogueResponse,
     ParticipantEntryRequest,
     ParticipantEntryResponse,
@@ -43,6 +46,7 @@ from app.services import (
     ParticipantRegistryService,
     QuestionnaireService,
     log_audit,
+    log_behavior,
     to_session_response,
     to_status_row,
 )
@@ -184,6 +188,69 @@ def behavior_events(
         )
         for event in events
     ]
+
+
+@app.post("/api/admin/sessions/{session_id}/exclusion", response_model=ExcludeSessionResponse)
+def exclude_session(
+    session_id: str,
+    payload: ExcludeSessionRequest,
+    admin_id: str = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> ExcludeSessionResponse:
+    session, participant = _get_session_and_participant(db, session_id)
+    updated = ExperimentSessionService.mark_exclusion(
+        db,
+        session=session,
+        participant=participant,
+        admin_id=admin_id,
+        excluded=payload.excluded,
+        reason=payload.reason,
+    )
+    return ExcludeSessionResponse(
+        experiment_session_id=updated.id,
+        status=updated.status,
+        excluded=updated.excluded,
+        exclusion_reason=updated.exclusion_reason,
+    )
+
+
+@app.post("/api/admin/export")
+def export_package(
+    admin_id: str = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> Response:
+    log_audit(
+        db,
+        admin_id=admin_id,
+        action="data_export_requested",
+        target_type="export_package",
+    )
+    log_behavior(
+        db,
+        event_type="data_export_requested",
+        stage="export",
+        metadata={"admin_id": admin_id},
+    )
+    db.flush()
+    log_audit(
+        db,
+        admin_id=admin_id,
+        action="data_export_completed",
+        target_type="export_package",
+    )
+    log_behavior(
+        db,
+        event_type="data_export_completed",
+        stage="export",
+        metadata={"admin_id": admin_id},
+    )
+    db.commit()
+    content, filename = build_export_zip(db, admin_id=admin_id)
+    return Response(
+        content=content,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.post("/api/participant/entry", response_model=ParticipantEntryResponse)

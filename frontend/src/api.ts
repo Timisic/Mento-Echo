@@ -13,6 +13,18 @@ export type AdminStatusRow = {
   group: 'experiment' | 'control' | null;
   assignment_source: 'imported' | 'randomized' | null;
   assignment_locked: boolean;
+  pre_survey_submitted: boolean;
+  post_survey_submitted: boolean;
+  participant_turn_count: number;
+  dialogue_elapsed_seconds: number;
+  dialogue_elapsed_minutes: number;
+  met_min_turns: boolean;
+  met_min_duration: boolean;
+  dialogue_completion_eligible: boolean;
+  dialogue_completed: boolean;
+  completed: boolean;
+  excluded: boolean;
+  exclusion_reason: string | null;
   resume_count: number;
   last_seen_at: string | null;
 };
@@ -119,6 +131,38 @@ export function fetchAdminStatus(token: string): Promise<{ participants: AdminSt
   return request('/api/admin/status', {
     headers: { Authorization: `Bearer ${token}` }
   });
+}
+
+export function resetPreSurvey(token: string, sessionId: string, reason: string): Promise<{ reset: boolean }> {
+  return request(`/api/admin/sessions/${sessionId}/questionnaires/pre/reset`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ reason })
+  });
+}
+
+export function markSessionExcluded(
+  token: string,
+  sessionId: string,
+  reason: string
+): Promise<{ experiment_session_id: string; status: string; excluded: boolean; exclusion_reason: string | null }> {
+  return request(`/api/admin/sessions/${sessionId}/exclusion`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ excluded: true, reason })
+  });
+}
+
+export async function exportPackage(token: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/export`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `Request failed with ${response.status}`);
+  }
+  return response.blob();
 }
 
 export function enterParticipantCode(participantCode: string): Promise<{ session: ParticipantSession }> {

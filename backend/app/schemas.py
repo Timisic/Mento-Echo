@@ -96,8 +96,18 @@ class StatusRow(BaseModel):
     chat_completed_at: datetime | None
     post_survey_submitted_at: datetime | None
     completed_at: datetime | None
+    pre_survey_submitted: bool
+    post_survey_submitted: bool
     participant_turn_count: int
     dialogue_elapsed_seconds: int
+    dialogue_elapsed_minutes: float
+    met_min_turns: bool
+    met_min_duration: bool
+    dialogue_completion_eligible: bool
+    dialogue_completed: bool
+    completed: bool
+    excluded: bool
+    exclusion_reason: str | None
     resume_count: int
     last_seen_at: datetime | None
 
@@ -186,6 +196,18 @@ class QuestionnaireSubmitResponse(BaseModel):
 
 class ResetQuestionnaireRequest(BaseModel):
     reason: str = Field(min_length=1)
+
+
+class ExcludeSessionRequest(BaseModel):
+    excluded: bool = True
+    reason: str = Field(min_length=1)
+
+
+class ExcludeSessionResponse(BaseModel):
+    experiment_session_id: str
+    status: SessionStatus
+    excluded: bool
+    exclusion_reason: str | None
 
 
 class ChatMessageResponse(BaseModel):

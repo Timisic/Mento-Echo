@@ -7,12 +7,15 @@ import {
   adminLogin,
   createAssignment,
   enterParticipantCode,
+  exportPackage,
   fetchAdminStatus,
   fetchDialogue,
   fetchHealth,
   fetchQuestionnaire,
   finishDialogue,
   importParticipants,
+  markSessionExcluded,
+  resetPreSurvey,
   sendDialogueMessage,
   submitQuestionnaire
 } from './api';
@@ -22,6 +25,7 @@ function App() {
   const [health, setHealth] = useState('Checking backend…');
   const [adminToken, setAdminToken] = useState('');
   const [adminMessage, setAdminMessage] = useState('');
+  const [adminActionReason, setAdminActionReason] = useState('');
   const [statusRows, setStatusRows] = useState<AdminStatusRow[]>([]);
   const [participantSession, setParticipantSession] = useState<ParticipantSession | null>(null);
   const [participantMessage, setParticipantMessage] = useState('');
@@ -64,6 +68,39 @@ function App() {
     if (!token) return;
     const status = await fetchAdminStatus(token);
     setStatusRows(status.participants);
+  }
+
+  async function handleResetPreSurvey(sessionId: string) {
+    if (!adminToken || !adminActionReason.trim()) {
+      setAdminMessage('Reset requires an audit reason.');
+      return;
+    }
+    await resetPreSurvey(adminToken, sessionId, adminActionReason);
+    setAdminMessage('Pre-survey reset recorded with audit reason.');
+    await refreshStatus();
+  }
+
+  async function handleExcludeSession(sessionId: string) {
+    if (!adminToken || !adminActionReason.trim()) {
+      setAdminMessage('Exclusion requires an audit reason.');
+      return;
+    }
+    await markSessionExcluded(adminToken, sessionId, adminActionReason);
+    setAdminMessage('Session excluded and audited.');
+    await refreshStatus();
+  }
+
+  async function handleExportPackage() {
+    if (!adminToken) return;
+    const blob = await exportPackage(adminToken);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `mentor-echo-export-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setAdminMessage('Export ZIP generated. Raw chat is sensitive and separated from analysis_dataset.csv.');
+    await refreshStatus();
   }
 
   async function handleParticipantEntry(event: FormEvent<HTMLFormElement>) {
@@ -168,7 +205,17 @@ function App() {
           </select>
           <button type="submit" disabled={!adminToken}>Import</button>
           <button type="button" disabled={!adminToken} onClick={() => refreshStatus()}>Refresh status</button>
+          <button type="button" disabled={!adminToken} onClick={handleExportPackage}>Export ZIP</button>
         </form>
+        <label className="stacked-field">
+          Audit / exclusion reason
+          <input
+            value={adminActionReason}
+            onChange={(event) => setAdminActionReason(event.target.value)}
+            placeholder="Required before reset or exclusion"
+            aria-label="admin action reason"
+          />
+        </label>
         <p>{adminMessage}</p>
         <table>
           <thead>
@@ -177,7 +224,15 @@ function App() {
               <th>Status</th>
               <th>Group</th>
               <th>Source</th>
+              <th>Surveys</th>
+              <th>Turns</th>
+              <th>Elapsed</th>
+              <th>Eligibility</th>
+              <th>Completion</th>
+              <th>Exclusion</th>
               <th>Resume Count</th>
+              <th>Last Seen</th>
+              <th>Controls</th>
             </tr>
           </thead>
           <tbody>
@@ -187,7 +242,32 @@ function App() {
                 <td>{row.status}</td>
                 <td>{row.group ?? '—'}</td>
                 <td>{row.assignment_source ?? '—'}</td>
+                <td>
+                  pre {row.pre_survey_submitted ? '✓' : '—'} / post {row.post_survey_submitted ? '✓' : '—'}
+                </td>
+                <td>{row.participant_turn_count}</td>
+                <td>{row.dialogue_elapsed_minutes} min</td>
+                <td>{row.dialogue_completion_eligible ? 'eligible' : 'not eligible'}</td>
+                <td>{row.completed ? 'completed' : row.dialogue_completed ? 'dialogue done' : 'incomplete'}</td>
+                <td>{row.excluded ? `excluded: ${row.exclusion_reason ?? ''}` : 'included'}</td>
                 <td>{row.resume_count}</td>
+                <td>{row.last_seen_at ? new Date(row.last_seen_at).toLocaleString() : '—'}</td>
+                <td>
+                  <button
+                    type="button"
+                    disabled={!row.experiment_session_id}
+                    onClick={() => row.experiment_session_id && handleResetPreSurvey(row.experiment_session_id)}
+                  >
+                    Reset pre
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!row.experiment_session_id || row.excluded}
+                    onClick={() => row.experiment_session_id && handleExcludeSession(row.experiment_session_id)}
+                  >
+                    Exclude
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>

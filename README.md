@@ -48,6 +48,9 @@ pytest backend
 cd frontend && npm test -- --run
 ```
 
+For the full researcher pilot gate, use the command sequence in
+[`docs/pilot-readiness-check.md`](docs/pilot-readiness-check.md).
+
 ## Configuration
 
 Copy `.env.example` to `.env` for local overrides. The MVP uses a single researcher administrator account controlled by `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `ADMIN_TOKEN`. Do not commit real credentials, participant names, or provider API keys.
@@ -62,3 +65,4 @@ Copy `.env.example` to `.env` for local overrides. The MVP uses a single researc
 - Admin status API exposes participant code, session status, group, assignment source, timestamps, resume count, and last seen time.
 - Versioned pre/post questionnaires render from `mentor_echo_questionnaire_v2026_05_14_hitl_map`, lock on submission, store raw response metadata, and compute derived scores plus attention-check status.
 - AI Dialogue starts only after pre-survey submission and locked assignment, selects the experiment/control prompt, stores participant and assistant messages with provider/model/prompt metadata, and enforces 10 participant turns plus 15 elapsed minutes before post-survey access.
+- Researcher admin operations include pilot dashboard fields, audited pre-survey reset, audited exclusion, and export ZIP generation with a separated sensitive raw chat JSONL plus routine `analysis_dataset.csv`.

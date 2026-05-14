@@ -56,6 +56,12 @@ def now_utc() -> datetime:
     return datetime.now(UTC)
 
 
+def elapsed_seconds_since(timestamp: datetime) -> int:
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    return max(0, int((now_utc() - timestamp).total_seconds()))
+
+
 def normalize_participant_code(raw: str) -> str:
     return " ".join(raw.strip().upper().split())
 
@@ -278,6 +284,50 @@ class ExperimentSessionService:
             session.completed_at = timestamp
         return session
 
+    @staticmethod
+    def mark_exclusion(
+        db: Session,
+        *,
+        session: ExperimentSession,
+        participant: Participant,
+        admin_id: str,
+        excluded: bool,
+        reason: str,
+    ) -> ExperimentSession:
+        clean_reason = reason.strip()
+        if not clean_reason:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="reason is required")
+        timestamp = now_utc()
+        session.excluded = excluded
+        session.exclusion_reason = clean_reason if excluded else None
+        session.excluded_at = timestamp if excluded else None
+        if excluded:
+            session.status = "excluded"
+        elif session.status == "excluded":
+            session.status = "reset_required"
+        session.updated_at = timestamp
+        action = "session_excluded" if excluded else "session_exclusion_cleared"
+        log_audit(
+            db,
+            admin_id=admin_id,
+            action=action,
+            target_type="experiment_session",
+            target_id=session.id,
+            reason=clean_reason,
+            metadata={"participant_code": participant.participant_code},
+        )
+        log_behavior(
+            db,
+            event_type=action,
+            participant=participant,
+            session=session,
+            stage=session.status,
+            metadata={"reason": clean_reason},
+        )
+        db.commit()
+        db.refresh(session)
+        return session
+
 
 class GroupAssignmentService:
     @staticmethod
@@ -443,6 +493,14 @@ class QuestionnaireService:
             target_id=session.id,
             reason=reason,
             metadata={"participant_code": participant.participant_code},
+        )
+        log_behavior(
+            db,
+            event_type="admin_stage_reset",
+            participant=participant,
+            session=session,
+            stage=phase,
+            metadata={"phase": phase, "reason": reason.strip()},
         )
         db.commit()
 
@@ -622,6 +680,21 @@ class DialogueService:
                 error_message_sanitized=exc.message,
             )
             db.add(assistant_message)
+            log_behavior(
+                db,
+                event_type="ai_call_failed",
+                participant=participant,
+                session=session,
+                stage=session.status,
+                metadata={
+                    "provider_name": get_settings().ai_provider_name,
+                    "model_name": get_settings().ai_model_name,
+                    "system_prompt_version": prompt.version,
+                    "retry_count": 0,
+                    "error_code": exc.code,
+                    "error_message_sanitized": exc.message,
+                },
+            )
             db.commit()
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI provider call failed") from exc
         db.add(assistant_message)
@@ -663,7 +736,7 @@ class DialogueService:
         ) or 0
         elapsed = 0
         if session.chat_started_at is not None:
-            elapsed = max(0, int((now_utc() - session.chat_started_at).total_seconds()))
+            elapsed = elapsed_seconds_since(session.chat_started_at)
         session.participant_turn_count = int(participant_turns)
         session.dialogue_elapsed_seconds = elapsed
         eligible = participant_turns >= DialogueService.MIN_PARTICIPANT_TURNS and elapsed >= DialogueService.MIN_ELAPSED_SECONDS
@@ -761,11 +834,23 @@ def to_status_row(participant: Participant) -> StatusRow:
             chat_completed_at=None,
             post_survey_submitted_at=None,
             completed_at=None,
+            pre_survey_submitted=False,
+            post_survey_submitted=False,
             participant_turn_count=0,
             dialogue_elapsed_seconds=0,
+            dialogue_elapsed_minutes=0.0,
+            met_min_turns=False,
+            met_min_duration=False,
+            dialogue_completion_eligible=False,
+            dialogue_completed=False,
+            completed=False,
+            excluded=False,
+            exclusion_reason=None,
             resume_count=0,
             last_seen_at=None,
         )
+    met_min_turns = session.participant_turn_count >= DialogueService.MIN_PARTICIPANT_TURNS
+    met_min_duration = session.dialogue_elapsed_seconds >= DialogueService.MIN_ELAPSED_SECONDS
     return StatusRow(
         participant_code=participant.participant_code,
         assigned_group_imported=participant.assigned_group,
@@ -780,8 +865,19 @@ def to_status_row(participant: Participant) -> StatusRow:
         chat_completed_at=session.chat_completed_at,
         post_survey_submitted_at=session.post_survey_submitted_at,
         completed_at=session.completed_at,
+        pre_survey_submitted=session.pre_survey_submitted_at is not None,
+        post_survey_submitted=session.post_survey_submitted_at is not None,
         participant_turn_count=session.participant_turn_count,
         dialogue_elapsed_seconds=session.dialogue_elapsed_seconds,
+        dialogue_elapsed_minutes=round(session.dialogue_elapsed_seconds / 60, 2),
+        met_min_turns=met_min_turns,
+        met_min_duration=met_min_duration,
+        dialogue_completion_eligible=met_min_turns and met_min_duration,
+        dialogue_completed=session.chat_completed_at is not None
+        or session.status in {"chat_completed", "completed"},
+        completed=session.completed_at is not None or session.status == "completed",
+        excluded=session.excluded or session.status == "excluded",
+        exclusion_reason=session.exclusion_reason,
         resume_count=session.resume_count,
         last_seen_at=session.last_seen_at,
     )

@@ -54,6 +54,13 @@ h1 {
   margin-bottom: 14px;
 }
 
+.stacked-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  max-width: 520px;
+}
+
 .stage-actions {
   display: flex;
   flex-wrap: wrap;

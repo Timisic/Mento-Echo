@@ -11,6 +11,8 @@ os.environ.setdefault(
 os.environ.setdefault("ADMIN_USERNAME", "researcher")
 os.environ.setdefault("ADMIN_PASSWORD", "test-admin-password")
 os.environ.setdefault("ADMIN_TOKEN", "test-admin-token")
+os.environ.setdefault("AI_PROVIDER_NAME", "mock")
+os.environ.setdefault("AI_MODEL_NAME", "mock-mentor-echo")
 
 from app.config import get_settings  # noqa: E402
 from app.db import get_engine, reset_engine  # noqa: E402
