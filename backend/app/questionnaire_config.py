@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_14_hitl_map"
+QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_15_major_umics_only"
 
 Phase = Literal["pre", "post"]
 
@@ -105,47 +105,19 @@ identity_distress_texts = [
 ]
 
 umics = [
-    ("commitment", "01", "我的[专业选择/职业方向/价值观/人生目标]让我对生活有确定感。"),
-    ("commitment", "02", "我的[专业选择/职业方向/价值观/人生目标]很适合我。"),
-    ("commitment", "03", "我觉得我的[专业选择/职业方向/价值观/人生目标]很有吸引力。"),
-    ("commitment", "04", "我认同我的[专业选择/职业方向/价值观/人生目标]。"),
-    ("commitment", "05", "我对我的[专业选择/职业方向/价值观/人生目标]感到有承诺。"),
-    ("in_depth_exploration", "01", "我经常思考我的[专业选择/职业方向/价值观/人生目标]。"),
-    ("in_depth_exploration", "02", "我试图去发现关于我的[专业选择/职业方向/价值观/人生目标]的新事物。"),
-    ("in_depth_exploration", "03", "我经常反思我的[专业选择/职业方向/价值观/人生目标]。"),
-    ("in_depth_exploration", "04", "我经常和其他人谈论我的[专业选择/职业方向/价值观/人生目标]。"),
-    ("in_depth_exploration", "05", "我试图尽可能多地了解我的[专业选择/职业方向/价值观/人生目标]。"),
-    ("reconsideration_of_commitment", "01", "我经常想，试着去寻找一个不同的[专业选择/职业方向/价值观/人生目标]可能会更好。"),
-    ("reconsideration_of_commitment", "02", "我经常想，一个新的[专业选择/职业方向/价值观/人生目标]会让我的生活变得更有趣。"),
-    ("reconsideration_of_commitment", "03", "事实上，我正在寻找一个不同的[专业选择/职业方向/价值观/人生目标]。"),
-]
-
-dids = [
-    ("commitment_making", "01", "我已经决定了我将要遵循的[职业/专业/价值观/人生目标]方向。"),
-    ("commitment_making", "02", "我对未来要做什么有计划。"),
-    ("commitment_making", "03", "我知道我的人生将要遵循哪个方向。"),
-    ("commitment_making", "04", "我对未来要做什么有清晰的构想。"),
-    ("commitment_making", "05", "我已经对我的人生要做什么做出了选择。"),
-    ("exploration_in_breadth", "01", "我主动思考我可能采取的不同[职业/专业/价值观/人生目标]方向。"),
-    ("exploration_in_breadth", "02", "我思考未来可能做的不同事情。"),
-    ("exploration_in_breadth", "03", "我正在考虑多种不同的[职业/专业/价值观/人生目标]生活方式。"),
-    ("exploration_in_breadth", "04", "我思考我可能追求的不同目标。"),
-    ("exploration_in_breadth", "05", "我正在思考可能适合我的不同[职业/专业/价值观/人生目标]生活方式。"),
-    ("ruminative_exploration", "01", "我对我人生中真正想实现的目标感到怀疑。"),
-    ("ruminative_exploration", "02", "我担心我的未来到底想做什么。"),
-    ("ruminative_exploration", "03", "我一直在寻找我人生想要走的方向。"),
-    ("ruminative_exploration", "04", "我一直琢磨我的人生必须走哪个方向。"),
-    ("ruminative_exploration", "05", "我很难停止思考我人生的方向。"),
-    ("identification_with_commitment", "01", "我未来的计划与我真正的[职业/专业/价值观/人生目标]兴趣相匹配"),
-    ("identification_with_commitment", "02", "我未来的计划让我感到自信。"),
-    ("identification_with_commitment", "03", "因为有未来的计划，我对自己感到确定。"),
-    ("identification_with_commitment", "04", "我感觉到我人生想要走的[职业/专业/价值观/人生目标]方向。"),
-    ("identification_with_commitment", "05", "我确信我未来的[职业/专业/价值观/人生目标]计划是正确的。"),
-    ("exploration_in_depth", "01", "我会思考我已经制定的未来计划。"),
-    ("exploration_in_depth", "02", "我会和其他人谈论我未来的计划。"),
-    ("exploration_in_depth", "03", "我会思考我已有的生活目标是否与我的[职业/专业/价值观/人生目标]相匹配。"),
-    ("exploration_in_depth", "04", "我试图了解其他人对我具体的[职业/专业/价值观/人生目标]的看法。"),
-    ("exploration_in_depth", "05", "我会思考我未来的计划是否与我的[职业/专业/价值观/人生目标]相匹配。"),
+    ("commitment", "01", "我的专业选择让我对生活有确定感。"),
+    ("commitment", "02", "我的专业选择很适合我。"),
+    ("commitment", "03", "我觉得我的专业选择很有吸引力。"),
+    ("commitment", "04", "我认同我的专业选择。"),
+    ("commitment", "05", "我对我的专业选择感到有承诺。"),
+    ("in_depth_exploration", "01", "我经常思考我的专业选择。"),
+    ("in_depth_exploration", "02", "我试图去发现关于我的专业选择的新事物。"),
+    ("in_depth_exploration", "03", "我经常反思我的专业选择。"),
+    ("in_depth_exploration", "04", "我经常和其他人谈论我的专业选择。"),
+    ("in_depth_exploration", "05", "我试图尽可能多地了解我的专业选择。"),
+    ("reconsideration_of_commitment", "01", "我经常想，试着去寻找一个不同的专业选择可能会更好。"),
+    ("reconsideration_of_commitment", "02", "我经常想，一个新的专业选择会让我的生活变得更有趣。"),
+    ("reconsideration_of_commitment", "03", "事实上，我正在寻找一个不同的专业选择。"),
 ]
 
 
@@ -183,13 +155,29 @@ def build_items() -> tuple[QuestionnaireItem, ...]:
     add("pre", "pre_demo_gender", "您的性别", "single_choice", "gender_options", "demographics", "gender")
     add("pre", "pre_demo_grade", "您目前在读：", "single_choice", "grade_options", "demographics", "grade")
     for i, text in enumerate(identity_distress_texts, 1):
-        add("pre", f"pre_identity_distress_{i:02d}", text, "matrix_single_choice", "identity_distress_1_5", "identity_distress", "total")
+        add(
+            "pre",
+            f"pre_identity_distress_{i:02d}",
+            text,
+            "matrix_single_choice",
+            "identity_distress_1_5",
+            "identity_distress",
+            "total",
+        )
     for idx, (dimension, n, text) in enumerate(umics, 1):
         if idx == 13:
-            add("pre", "pre_ac_umics_select_5", "这道题请选择5", "matrix_single_choice", "agreement_1_5", "attention_check", "umics_attention", attention_check=True, expected=5)
+            add(
+                "pre",
+                "pre_ac_umics_select_5",
+                "这道题请选择5",
+                "matrix_single_choice",
+                "agreement_1_5",
+                "attention_check",
+                "umics_attention",
+                attention_check=True,
+                expected=5,
+            )
         add("pre", f"pre_umics_{dimension}_{n}", text, "matrix_single_choice", "agreement_1_5", "umics", dimension)
-    for dimension, n, text in dids:
-        add("pre", f"pre_dids_{dimension}_{n}", text, "matrix_single_choice", "agreement_1_5", "dids", dimension)
 
     for i, text in enumerate(identity_distress_texts, 1):
         add("post", f"post_identity_distress_{i:02d}", text, "single_choice", "identity_distress_1_5", "identity_distress", "total")
@@ -213,7 +201,15 @@ def build_items() -> tuple[QuestionnaireItem, ...]:
         ],
         1,
     ):
-        add("post", f"post_ai_anthropomorphism_{i:02d}", text, "matrix_semantic_differential", "semantic_differential_1_5", "ai_anthropomorphism", dimension)
+        add(
+            "post",
+            f"post_ai_anthropomorphism_{i:02d}",
+            text,
+            "matrix_semantic_differential",
+            "semantic_differential_1_5",
+            "ai_anthropomorphism",
+            dimension,
+        )
     for dimension, n, text in [
         ("autonomy_satisfaction", "01", "在刚才这次对话中，我觉得自己可以按照自己的想法去思考和自己未来有关的内容。"),
         ("autonomy_satisfaction", "02", "在这次对话中，我觉得自己是在从自己的立场出发看待这些问题。"),
@@ -228,10 +224,6 @@ def build_items() -> tuple[QuestionnaireItem, ...]:
         add("post", f"post_bpnsfs_{dimension}_{n}", text, "single_choice", "bpnsfs_agreement_1_5", "bpnsfs_adapted_dialogue_experience", dimension)
     for dimension, n, text in umics:
         add("post", f"post_umics_{dimension}_{n}", text, "matrix_single_choice", "agreement_1_5", "umics", dimension)
-    for idx, (dimension, n, text) in enumerate(dids, 1):
-        if idx == 24:
-            add("post", "post_ac_dids_select_1", "这道题请选择1", "matrix_single_choice", "agreement_1_5", "attention_check", "dids_attention", attention_check=True, expected=1)
-        add("post", f"post_dids_{dimension}_{n}", text, "matrix_single_choice", "agreement_1_5", "dids", dimension)
     return tuple(items)
 
 

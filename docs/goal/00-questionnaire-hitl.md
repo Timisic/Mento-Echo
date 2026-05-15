@@ -1,4 +1,4 @@
-# Goal 00: Finalize Questionnaire HITL Map
+# Goal 00: Finalize Questionnaire HITL Map (Resolved)
 
 ## GitHub issue
 
@@ -6,7 +6,7 @@
 
 ## Target result
 
-Produce a researcher-approved questionnaire implementation map that is ready for AFK coding. Resolve the known source-document ambiguities before questionnaire rendering/scoring is implemented.
+Resolved on 2026-05-15. The current researcher-approved map is `mentor_echo_questionnaire_v2026_05_15_major_umics_only`: placeholders render as 专业选择, DIDS is removed from both phases, and U-MICS is retained.
 
 ## Read first
 

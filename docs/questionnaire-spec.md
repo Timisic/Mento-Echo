@@ -4,17 +4,24 @@
 
 - Raw Word source: `docs/source/汇总问卷.docx`
 - Markdown conversion: [`docs/汇总问卷.md`](./汇总问卷.md)
+- Current implementation map: [`docs/questionnaire-implementation-map.md`](./questionnaire-implementation-map.md)
 - Research protocol: [`docs/研究1-AI对话平台.md`](./研究1-AI对话平台.md)
+
+## Current researcher-confirmed version
+
+Current questionnaire version: `mentor_echo_questionnaire_v2026_05_15_major_umics_only`
+
+Researcher confirmation on 2026-05-15:
+
+1. All source placeholders like `[专业选择/职业方向/价值观/人生目标]` are rendered as **专业选择**.
+2. DIDS is removed from both pre-survey and post-survey.
+3. U-MICS is retained in both pre-survey and post-survey.
+4. The source post-survey attention check was inside DIDS, so it is removed with DIDS. The current version has only one attention check: pre-survey U-MICS item `这道题请选择5`.
+5. The platform stores participant code only and does not store participant names.
 
 ## MVP interpretation
 
 The MVP treats questionnaires as versioned structured configuration. The admin UI does not edit questions or options.
-
-The final AFK-ready item/scoring map for the current source snapshot is
-[`docs/questionnaire-implementation-map.md`](./questionnaire-implementation-map.md).
-Use that map as the implementation authority for item keys, normalized anchors,
-dimension names, attention-check pass criteria, and the participant-code-only
-privacy rule.
 
 Each rendered questionnaire item should be defined with at least:
 
@@ -24,37 +31,47 @@ Each rendered questionnaire item should be defined with at least:
 | `phase` | `pre` or `post`. |
 | `item_key` | Stable machine-readable item identifier. |
 | `item_text` | Participant-visible question text. |
-| `item_type` | Example: `single_choice`, `matrix_single_choice`, `text`. |
+| `item_type` | Example: `single_choice`, `matrix_single_choice`, `matrix_semantic_differential`, `text`. |
 | `scale_min` / `scale_max` | Numeric response range where applicable. |
 | `scale_labels` | Anchor labels such as `完全不符合` and `完全符合`. |
-| `instrument` | Example: identity distress, U-MICS, DIDS, perceived AI competence, AI anthropomorphism, BPNSFS. |
+| `instrument` | Example: identity distress, U-MICS, perceived AI competence, AI anthropomorphism, BPNSFS. |
 | `dimension` | Subscale/dimension when known. |
 | `reverse_scored` | Boolean where scoring requires reverse coding. |
 | `attention_check` | Boolean for attention check items. |
 | `required` | Whether the item must be answered. |
 
-## Pre-survey source content
+## Pre-survey content
 
-The Word source currently describes the pre-survey as including:
+Implemented pre-survey content:
 
-1. Demographic/identifier information: participant code, name, gender, age, grade.
-2. Baseline identity distress.
-3. U-MICS items adapted to educational identity domains: major choice, career direction, values, life goals.
-4. One attention check embedded in U-MICS.
-5. DIDS items adapted to educational identity domains.
+1. Demographic/identifier-related items rendered by the platform:
+   - participant code is attached from the Experiment Session, not collected as editable questionnaire response;
+   - gender;
+   - grade.
+2. Baseline identity distress: 6 items, scale 1=完全没有 to 5=非常严重.
+3. U-MICS adapted to **专业选择**:
+   - commitment: 5 items;
+   - in-depth exploration: 5 items;
+   - reconsideration of commitment: 3 items.
+4. One U-MICS attention check: `这道题请选择5`.
 
-## Post-survey source content
+DIDS is not implemented in the pre-survey.
 
-The Word source currently describes the post-survey as including:
+## Post-survey content
 
-1. Identifier information: participant code and name.
-2. Baseline/identity distress items.
-3. Perceived AI competence.
-4. AI anthropomorphism perception using a 5-point semantic differential scale.
-5. BPNSFS items for the dialogue experience.
-6. U-MICS adapted identity items.
-7. DIDS adapted identity items.
-8. One attention check embedded in DIDS.
+Implemented post-survey content:
+
+1. Participant code is attached from the Experiment Session, not collected as editable questionnaire response.
+2. Identity distress: 6 items, scale 1=完全没有 to 5=非常严重.
+3. Perceived AI competence: 4 items, scale 1=非常不同意 to 7=非常同意.
+4. AI anthropomorphism: 5 semantic differential items, scale 1=非常接近左侧 to 5=非常接近右侧.
+5. BPNSFS adapted dialogue experience: 9 items.
+6. U-MICS adapted to **专业选择**:
+   - commitment: 5 items;
+   - in-depth exploration: 5 items;
+   - reconsideration of commitment: 3 items.
+
+DIDS is not implemented in the post-survey. There is no post-survey attention check in this questionnaire version.
 
 ## MVP privacy adjustment
 
@@ -71,9 +88,9 @@ If researchers require names for recruitment or compensation, keep the name-to-c
 
 ## Scoring and export
 
-The MVP should store raw item responses and derived scores separately.
+The MVP stores raw item responses and derived scores separately.
 
-Recommended derived score records:
+Derived score records include:
 
 | Field | Meaning |
 |---|---|
@@ -85,20 +102,14 @@ Recommended derived score records:
 | `score` | Computed score. |
 | `valid_items` | Count of valid answered items. |
 | `missing_items` | Count/list of missing items. |
-| `attention_check_passed` | Attention check status where relevant. |
+| `attention_check_passed` | Attention check status where relevant; `null` for phases without attention checks. |
 
-`analysis_dataset.csv` should include one row per participant with pre scores, post scores, and change scores for each exported dimension.
+`analysis_dataset.csv` should include one row per participant with pre scores, post scores, and change scores for dimensions measured in both phases.
 
-## Source issues resolved by the final map
+## Current known source issues and resolutions
 
-The source-document observations below are resolved or explicitly accepted in
-[`docs/questionnaire-implementation-map.md`](./questionnaire-implementation-map.md):
-
-- The adjacent repeated post-survey identity-distress text is treated as a
-  source typo. `post_identity_distress_02` uses the missing parallel
-  professional/study/career-choice wording from the pre-survey.
-- Identity-distress anchors are normalized to `1=完全没有` through
-  `5=非常严重`.
-- U-MICS, DIDS, BPNSFS adapted dialogue experience, perceived AI competence,
-  AI anthropomorphism, reverse-scoring flags, attention checks, required flags,
-  and participant-name omission are explicitly mapped for implementation.
+- The post-survey identity distress source has a duplicated item. Current implementation maps `post_identity_distress_02` to the pre-survey parallel item: `我会因为专业、升学或职业选择拿不准而感到困扰。`
+- Identity distress source anchors contained a typo/conflict. Current implementation uses 1=完全没有 to 5=非常严重.
+- BPNSFS contains two identical items about thinking from one's own standpoint. Current implementation keeps both as separate required items with distinct item keys.
+- The source summary mentions age, but the source questionnaire body has no actual age item. Current implementation does not collect age.
+- DIDS source sections remain in the raw converted document for provenance, but they are intentionally not part of the current implemented questionnaire version.

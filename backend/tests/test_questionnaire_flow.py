@@ -36,10 +36,13 @@ def test_pre_questionnaire_renders_from_versioned_config_without_name_fields(cli
 
     assert response.status_code == 200
     body = response.json()
-    assert body["questionnaire_version"] == "mentor_echo_questionnaire_v2026_05_14_hitl_map"
+    assert body["questionnaire_version"] == "mentor_echo_questionnaire_v2026_05_15_major_umics_only"
     assert body["phase"] == "pre"
-    assert len(body["items"]) == 47
+    assert len(body["items"]) == 22
     assert all("姓名" not in item["item_text"] for item in body["items"])
+    assert all("专业选择/职业方向/价值观/人生目标" not in item["item_text"] for item in body["items"])
+    assert any(item["item_text"] == "我的专业选择让我对生活有确定感。" for item in body["items"])
+    assert not any(item["instrument"] == "dids" for item in body["items"])
     assert {item["item_key"] for item in body["items"]} == {item.item_key for item in get_items("pre")}
 
 
@@ -54,7 +57,7 @@ def test_pre_submission_locks_raw_responses_scores_and_assignment(client, admin_
     assert submit.status_code == 200, submit.text
     body = submit.json()
     assert body["locked"] is True
-    assert body["response_count"] == 47
+    assert body["response_count"] == 22
     assert body["session"]["status"] == "pre_survey_submitted"
     assert body["session"]["group"] == "control"
     assert body["session"]["assignment_source"] == "imported"
@@ -65,9 +68,9 @@ def test_pre_submission_locks_raw_responses_scores_and_assignment(client, admin_
     assert duplicate.status_code == 409
 
     rows = db_session.query(QuestionnaireResponse).filter_by(experiment_session_id=session_id, phase="pre").all()
-    assert len(rows) == 47
+    assert len(rows) == 22
     sample = next(row for row in rows if row.item_key == "pre_identity_distress_01")
-    assert sample.questionnaire_version == "mentor_echo_questionnaire_v2026_05_14_hitl_map"
+    assert sample.questionnaire_version == "mentor_echo_questionnaire_v2026_05_15_major_umics_only"
     assert sample.instrument == "identity_distress"
     assert sample.dimension == "total"
     assert sample.response_value == 5
@@ -122,7 +125,7 @@ def test_admin_reset_reopens_questionnaire_with_audited_reason(client, admin_hea
     active_rows = db_session.query(QuestionnaireResponse).filter_by(
         experiment_session_id=session_id, phase="pre", superseded_at=None
     ).all()
-    assert len(active_rows) == 47
+    assert len(active_rows) == 22
 
 
 def test_post_questionnaire_is_available_only_after_dialogue_completion(client, admin_headers):

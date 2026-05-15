@@ -110,7 +110,7 @@ A single researcher administrator account can import participant codes, monitor 
 - Provide frontend admin screens for login, participant import, progress dashboard, participant detail/review, reset/exclusion actions, and export trigger/download.
 - Use a backend API boundary that supports participant flow endpoints, admin flow endpoints, AI dialogue endpoints, questionnaire endpoints, and export endpoints. Keep API details stable enough for future UI redesign.
 - Store enough AI provider metadata for reproducibility: provider name, endpoint configuration key or base URL identity without secrets, model name, available model version/config snapshot, prompt version, generation parameters, request/response timestamps, retry count, and sanitized error data.
-- The current source questionnaire has known verification items before implementation: duplicate post-survey wording, scale anchor normalization, and final scoring dimensions for U-MICS, DIDS, BPNSFS, perceived AI competence, and AI anthropomorphism.
+- Questionnaire HITL was resolved on 2026-05-15: bracket placeholders render as 专业选择; DIDS is removed from both phases; U-MICS is retained; the current implementation map is `mentor_echo_questionnaire_v2026_05_15_major_umics_only`.
 
 ## Testing Decisions
 

@@ -10,7 +10,7 @@ Implement and satisfy:
 Prerequisites:
 
 - https://github.com/Timisic/Mento-Echo/issues/5 complete
-- https://github.com/Timisic/Mento-Echo/issues/6 resolved or explicitly approved for implementation
+- https://github.com/Timisic/Mento-Echo/issues/6 closed/resolved; use `mentor_echo_questionnaire_v2026_05_15_major_umics_only`
 
 ## Target result
 

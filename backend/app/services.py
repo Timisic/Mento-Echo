@@ -541,9 +541,13 @@ class QuestionnaireService:
     ) -> list[QuestionnaireScore]:
         by_key = {row.item_key: row for row in responses}
         attention_items = [item for item in get_items(phase) if item.attention_check]
-        attention_passed = all(
-            by_key[item.item_key].response_value == item.attention_check_expected_value
-            for item in attention_items
+        attention_passed = (
+            all(
+                by_key[item.item_key].response_value == item.attention_check_expected_value
+                for item in attention_items
+            )
+            if attention_items
+            else None
         )
         scores: list[QuestionnaireScore] = []
         for rule in score_rules_for_phase(phase):
@@ -568,20 +572,21 @@ class QuestionnaireService:
             )
             db.add(score)
             scores.append(score)
-        attention_score = QuestionnaireScore(
-            experiment_session_id=session.id,
-            participant_code=participant.participant_code,
-            phase=phase,
-            questionnaire_version=QUESTIONNAIRE_VERSION,
-            instrument="attention_check",
-            dimension=f"{phase}_attention",
-            score=1.0 if attention_passed else 0.0,
-            valid_items=len(attention_items),
-            missing_items=[],
-            attention_check_passed=attention_passed,
-        )
-        db.add(attention_score)
-        scores.append(attention_score)
+        if attention_items:
+            attention_score = QuestionnaireScore(
+                experiment_session_id=session.id,
+                participant_code=participant.participant_code,
+                phase=phase,
+                questionnaire_version=QUESTIONNAIRE_VERSION,
+                instrument="attention_check",
+                dimension=f"{phase}_attention",
+                score=1.0 if attention_passed else 0.0,
+                valid_items=len(attention_items),
+                missing_items=[],
+                attention_check_passed=attention_passed,
+            )
+            db.add(attention_score)
+            scores.append(attention_score)
         return scores
 
 
