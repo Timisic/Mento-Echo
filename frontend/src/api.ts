@@ -37,6 +37,9 @@ export type ParticipantSession = {
   assignment_source: 'imported' | 'randomized' | null;
   assignment_locked: boolean;
   resume_count: number;
+  last_seen_at: string | null;
+  started_at: string;
+  completed_at: string | null;
 };
 
 export type QuestionnaireItem = {
@@ -90,6 +93,15 @@ export type DialogueState = {
     message_index: number;
     role: string;
     content: string;
+    provider_name: string | null;
+    model_name: string | null;
+    system_prompt_version: string | null;
+    generation_params: Record<string, object> | null;
+    duration_ms: number | null;
+    retry_count: number | null;
+    error_code: string | null;
+    error_message_sanitized: string | null;
+    created_at: string;
   }>;
 };
 
@@ -100,7 +112,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(detail || `Request failed with ${response.status}`);
+    let message = detail || `Request failed with ${response.status}`;
+    try {
+      const parsed = JSON.parse(detail) as { detail?: unknown };
+      if (typeof parsed.detail === 'string') {
+        message = parsed.detail;
+      }
+    } catch {
+      // Keep the raw response body when the API did not return JSON.
+    }
+    throw new Error(message);
   }
   return (await response.json()) as T;
 }
