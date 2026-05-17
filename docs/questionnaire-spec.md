@@ -9,7 +9,7 @@
 
 ## Current researcher-confirmed version
 
-Current questionnaire version: `mentor_echo_questionnaire_v2026_05_15_major_umics_only`
+Current questionnaire version: `mentor_echo_questionnaire_v2026_05_18_major_umics_age`
 
 Researcher confirmation on 2026-05-15:
 
@@ -47,7 +47,8 @@ Implemented pre-survey content:
 1. Demographic/identifier-related items rendered by the platform:
    - participant code is attached from the Experiment Session, not collected as editable questionnaire response;
    - gender;
-   - grade.
+   - grade;
+   - age.
 2. Baseline identity distress: 6 items, scale 1=完全没有 to 5=非常严重.
 3. U-MICS adapted to **专业选择**:
    - commitment: 5 items;
@@ -65,7 +66,7 @@ Implemented post-survey content:
 2. Identity distress: 6 items, scale 1=完全没有 to 5=非常严重.
 3. Perceived AI competence: 4 items, scale 1=非常不同意 to 7=非常同意.
 4. AI anthropomorphism: 5 semantic differential items, scale 1=非常接近左侧 to 5=非常接近右侧.
-5. BPNSFS adapted dialogue experience: 9 items.
+5. BPNSFS adapted dialogue experience: 8 items.
 6. U-MICS adapted to **专业选择**:
    - commitment: 5 items;
    - in-depth exploration: 5 items;
@@ -110,6 +111,6 @@ Derived score records include:
 
 - The post-survey identity distress source has a duplicated item. Current implementation maps `post_identity_distress_02` to the pre-survey parallel item: `我会因为专业、升学或职业选择拿不准而感到困扰。`
 - Identity distress source anchors contained a typo/conflict. Current implementation uses 1=完全没有 to 5=非常严重.
-- BPNSFS contains two identical items about thinking from one's own standpoint. Current implementation keeps both as separate required items with distinct item keys.
-- The source summary mentions age, but the source questionnaire body has no actual age item. Current implementation does not collect age.
+- BPNSFS contained two identical items about thinking from one's own standpoint. The DEC-106 questionnaire version removes the duplicate item.
+- The source summary mentions age. The DEC-106 questionnaire version collects age as a required pre-survey demographic item.
 - DIDS source sections remain in the raw converted document for provenance, but they are intentionally not part of the current implemented questionnaire version.

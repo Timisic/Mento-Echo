@@ -127,7 +127,7 @@ li {
 .app-shell {
   inline-size: min(1180px, calc(100% - 32px));
   margin: 0 auto;
-  padding-block: var(--space-lg) var(--space-2xl);
+  padding-block: var(--space-md) var(--space-xl);
 }
 
 .topbar,
@@ -145,7 +145,7 @@ li {
 
 .topbar {
   justify-content: space-between;
-  margin-block-end: var(--space-2xl);
+  margin-block-end: var(--space-lg);
 }
 
 .brand-button,
@@ -217,7 +217,6 @@ li {
 
 .guide-panel,
 .questionnaire,
-.dialogue-layout,
 .management-section,
 .entry-form {
   border: 1px solid var(--border);
@@ -491,17 +490,30 @@ li {
 
 .dialogue-layout {
   display: grid;
+  gap: var(--space-md);
+}
+
+.dialogue-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
   gap: var(--space-lg);
+  align-items: start;
+}
+
+.chat-panel,
+.dialogue-sidebar {
+  display: grid;
+  gap: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: var(--space-lg);
+  box-shadow: 0 10px 28px oklch(35% 0.04 245 / 0.05);
 }
 
 .dialogue-progress {
   display: grid;
-  grid-template-columns: repeat(4, minmax(130px, 1fr));
-  gap: var(--space-md);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-muted);
-  padding: var(--space-md);
+  gap: var(--space-sm);
 }
 
 .dialogue-progress h3,
@@ -515,14 +527,13 @@ li {
 
 .chat-window {
   display: grid;
-  gap: var(--space-md);
-  min-block-size: 340px;
-  max-block-size: 54vh;
+  align-content: start;
+  gap: var(--space-sm);
+  min-block-size: min(48vh, 440px);
+  max-block-size: min(54vh, 480px);
   overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-muted);
-  padding: var(--space-lg);
+  background: var(--surface);
+  padding: var(--space-sm);
 }
 
 .empty-state {
@@ -534,20 +545,36 @@ li {
   inline-size: min(74ch, 86%);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: var(--space-md);
+  padding: 0.78rem 0.92rem;
   background: var(--surface);
 }
 
 .message.participant {
   justify-self: end;
-  border-color: oklch(78% 0.045 245);
-  background: var(--primary-soft);
+  border-color: oklch(77% 0.04 245);
+  background: oklch(93.5% 0.03 245);
 }
 
-.message-role {
-  margin-block-end: var(--space-xs);
-  color: var(--text);
-  font-weight: 800;
+.message.thinking {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-muted);
+}
+
+.thinking-box {
+  inline-size: 18px;
+  block-size: 18px;
+  border: 2px solid oklch(74% 0.035 245);
+  border-block-start-color: var(--primary);
+  border-radius: 5px;
+  animation: thinking-spin 900ms linear infinite;
+}
+
+@keyframes thinking-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .markdown-content p,
@@ -684,15 +711,12 @@ td {
 @media (max-width: 900px) {
   .landing,
   .row-form,
-  .chat-form {
+  .chat-form,
+  .dialogue-shell {
     grid-template-columns: 1fr;
   }
 
   .summary-grid {
-    grid-template-columns: repeat(2, minmax(140px, 1fr));
-  }
-
-  .dialogue-progress {
     grid-template-columns: repeat(2, minmax(140px, 1fr));
   }
 
@@ -734,15 +758,13 @@ td {
 
   .guide-panel,
   .questionnaire,
-  .dialogue-layout,
   .management-section,
   .entry-form,
   .role-actions {
     padding: var(--space-lg);
   }
 
-  .summary-grid,
-  .dialogue-progress {
+  .summary-grid {
     grid-template-columns: 1fr;
   }
 

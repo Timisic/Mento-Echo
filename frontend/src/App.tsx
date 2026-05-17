@@ -12,7 +12,6 @@ import {
   exportPackage,
   fetchAdminStatus,
   fetchDialogue,
-  fetchHealth,
   fetchQuestionnaire,
   finishDialogue,
   importParticipants,
@@ -95,15 +94,6 @@ function userFacingError(error: unknown): string {
 
 function App() {
   const [route, setRoute] = useState<Route>('landing');
-  const [health, setHealth] = useState('正在连接后端');
-
-  useEffect(() => {
-    fetchHealth()
-      .then((data) => {
-        setHealth(`后端 ${data.app}，数据库${data.database.ok ? '正常' : '不可用'}`);
-      })
-      .catch((error: Error) => setHealth(`后端不可用：${error.message}`));
-  }, []);
 
   return (
     <main className="app-shell">
@@ -111,9 +101,6 @@ function App() {
         <button className="brand-button" type="button" onClick={() => setRoute('landing')}>
           Mentor Echo
         </button>
-        <p data-testid="health-status" className="health">
-          {health}
-        </p>
       </header>
 
       {route === 'landing' ? <LandingPage onSelect={setRoute} /> : null}
@@ -156,6 +143,8 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
   const [dirtyPhase, setDirtyPhase] = useState<Phase | null>(null);
   const [dialogue, setDialogue] = useState<DialogueState | null>(null);
   const [dialogueInput, setDialogueInput] = useState('');
+  const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
+  const [assistantThinking, setAssistantThinking] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -171,6 +160,12 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
     window.addEventListener('beforeunload', warnBeforeLeaving);
     return () => window.removeEventListener('beforeunload', warnBeforeLeaving);
   }, [hasUnsavedAnswers]);
+
+  useEffect(() => {
+    if (statusMessage !== '已恢复你的实验进度，请按照页面提示继续。') return;
+    const timeout = window.setTimeout(() => setStatusMessage(''), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [statusMessage]);
 
   async function handleEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -274,16 +269,24 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
   async function handleSendDialogueMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!session || !dialogueInput.trim()) return;
+    const content = dialogueInput.trim();
     setBusy(true);
     setError('');
+    setDialogueInput('');
+    setPendingUserMessage(content);
+    setAssistantThinking(true);
     try {
-      await sendDialogueMessage(session.experiment_session_id, dialogueInput.trim());
+      await sendDialogueMessage(session.experiment_session_id, content);
       const state = await fetchDialogue(session.experiment_session_id);
       setDialogue(state);
-      setDialogueInput('');
+      setPendingUserMessage(null);
+      setAssistantThinking(false);
       setSession({ ...session, status: state.status });
     } catch (sendError) {
       setError(userFacingError(sendError));
+      setDialogueInput(content);
+      setPendingUserMessage(null);
+      setAssistantThinking(false);
     } finally {
       setBusy(false);
     }
@@ -318,7 +321,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
       <FlowHeader
         eyebrow="被试端"
         title="AI 对话实验"
-        description="请按页面顺序完成实验。刷新页面后，可以用同一个被试编号恢复当前阶段。"
+        description="请使用研究者提供的被试编号完成当前阶段。"
         onBack={onBack}
       />
       {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
@@ -361,6 +364,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
           body={
             <>
               <p>请根据页面中的 AI 回应进行自然对话。</p>
+              <p>请围绕“我现在这个专业真的是我想继续读下去的吗？以后升学或就业，我还要不要继续走这个方向？”这类问题展开思考与表达。</p>
               <p>有效完成对话需要同时满足：</p>
               <ul>
                 <li>至少发送 10 条消息</li>
@@ -379,6 +383,8 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
           dialogue={dialogue}
           input={dialogueInput}
           busy={busy}
+          pendingUserMessage={pendingUserMessage}
+          assistantThinking={assistantThinking}
           onInput={setDialogueInput}
           onSend={handleSendDialogueMessage}
           onFinish={handleFinishDialogue}
@@ -709,11 +715,46 @@ function QuestionnaireItemControl({
     );
   }
 
+  if (item.item_type === 'number_input') {
+    return <NumberInputControl item={item} scale={scale} value={value} locked={locked} onChange={onChange} />;
+  }
+
   if (item.item_type === 'matrix_semantic_differential') {
     return <SemanticDifferentialScale item={item} scale={scale} value={value} locked={locked} onChange={onChange} />;
   }
 
   return <LikertScale item={item} scale={scale} value={value} locked={locked} onChange={onChange} />;
+}
+
+function NumberInputControl({
+  item,
+  scale,
+  value,
+  locked,
+  onChange
+}: {
+  item: QuestionnaireItem;
+  scale: ScaleProfile;
+  value: string | number | undefined;
+  locked: boolean;
+  onChange: (value: string | number) => void;
+}) {
+  return (
+    <fieldset className="question-block">
+      <legend>{item.order}. {item.item_text}</legend>
+      <input
+        type="number"
+        inputMode="numeric"
+        name={item.item_key}
+        min={scale.min_value ?? undefined}
+        max={scale.max_value ?? undefined}
+        value={value ?? ''}
+        disabled={locked}
+        placeholder="请输入年龄"
+        onChange={(event) => onChange(event.target.value === '' ? '' : Number(event.target.value))}
+      />
+    </fieldset>
+  );
 }
 
 function LikertScale({
@@ -845,6 +886,8 @@ function DialoguePage({
   dialogue,
   input,
   busy,
+  pendingUserMessage,
+  assistantThinking,
   onInput,
   onSend,
   onFinish
@@ -852,60 +895,93 @@ function DialoguePage({
   dialogue: DialogueState;
   input: string;
   busy: boolean;
+  pendingUserMessage: string | null;
+  assistantThinking: boolean;
   onInput: (value: string) => void;
   onSend: (event: FormEvent<HTMLFormElement>) => void;
   onFinish: () => void;
 }) {
   const progress = dialogue.progress;
-  const elapsed = formatDuration(progress.dialogue_elapsed_seconds);
+  const [elapsedSeconds, setElapsedSeconds] = useState(progress.dialogue_elapsed_seconds);
+
+  useEffect(() => {
+    setElapsedSeconds(progress.dialogue_elapsed_seconds);
+    const timer = window.setInterval(() => {
+      setElapsedSeconds((seconds) => seconds + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [progress.dialogue_elapsed_seconds]);
+
+  const elapsed = formatDuration(elapsedSeconds);
   const required = formatDuration(progress.required_elapsed_seconds);
+  const visibleMessages = pendingUserMessage
+    ? [
+        ...dialogue.messages,
+        {
+          id: 'pending-participant-message',
+          role: 'participant',
+          content: pendingUserMessage
+        }
+      ]
+    : dialogue.messages;
   return (
     <section className="dialogue-layout" aria-labelledby="dialogue-heading">
       <div className="section-heading">
         <div>
           <p className="eyebrow">AI 对话</p>
-          <h2 id="dialogue-heading">请自然完成本阶段对话</h2>
-          <p>完成资格由平台规则判断，不是由 AI 批准。</p>
+          <h2 id="dialogue-heading">围绕专业与未来方向展开对话</h2>
+          <p>可以从你是否想继续读当前专业、未来升学或就业是否还走这个方向开始。</p>
         </div>
       </div>
-      <div className="dialogue-progress" aria-label="完成要求">
-        <h3>完成要求</h3>
-        <p>消息数：{Math.min(progress.participant_turn_count, progress.required_participant_turns)} / {progress.required_participant_turns}</p>
-        <p>对话时长：{elapsed} / {required}</p>
-        <p>当前状态：{progress.eligible_to_finish ? '已达到完成条件' : '尚未达到完成条件'}</p>
+      <div className="dialogue-shell">
+        <div className="chat-panel">
+          <div className="chat-window" aria-live="polite">
+            {visibleMessages.length === 0 ? (
+              <p className="empty-state">消息会显示在这里。</p>
+            ) : (
+              visibleMessages.map((message) => (
+                <article
+                  key={message.id}
+                  className={message.role === 'participant' ? 'message participant' : 'message assistant'}
+                >
+                  <MarkdownContent text={message.content} />
+                </article>
+              ))
+            )}
+            {assistantThinking ? (
+              <article className="message assistant thinking" aria-label="thinking">
+                <span>thinking</span>
+                <span className="thinking-box" aria-hidden="true" />
+              </article>
+            ) : null}
+          </div>
+          <form className="chat-form" onSubmit={onSend}>
+            <label>
+              对话内容
+              <textarea
+                value={input}
+                onChange={(event) => onInput(event.target.value)}
+                placeholder="请输入你想发送的内容"
+                rows={2}
+              />
+            </label>
+            <button type="submit" className="primary-action" disabled={busy || !input.trim()}>
+              发送
+            </button>
+          </form>
+        </div>
+        <aside className="dialogue-sidebar" aria-label="对话完成信息">
+          <div className="dialogue-progress">
+            <h3>完成要求</h3>
+            <p>消息数：{Math.min(progress.participant_turn_count, progress.required_participant_turns)} / {progress.required_participant_turns}</p>
+            <p>对话时长：{elapsed} / {required}</p>
+            <p>{progress.eligible_to_finish ? '已达到完成条件' : '尚未达到完成条件'}</p>
+          </div>
+          <button type="button" className="primary-action" disabled={!progress.eligible_to_finish || busy} onClick={onFinish}>
+            {progress.eligible_to_finish ? '结束对话并进入后测' : '暂不能进入后测'}
+          </button>
+        </aside>
       </div>
-      <div className="chat-window" aria-live="polite">
-        {dialogue.messages.length === 0 ? (
-          <p className="empty-state">AI 对话开始后，消息会显示在这里。</p>
-        ) : (
-          dialogue.messages.map((message) => (
-            <article
-              key={message.id}
-              className={message.role === 'participant' ? 'message participant' : 'message assistant'}
-            >
-              <p className="message-role">{message.role === 'participant' ? '我' : 'AI'}</p>
-              <MarkdownContent text={message.content} />
-            </article>
-          ))
-        )}
-      </div>
-      <form className="chat-form" onSubmit={onSend}>
-        <label>
-          对话内容
-          <textarea
-            value={input}
-            onChange={(event) => onInput(event.target.value)}
-            placeholder="请输入你想发送给 AI 的内容"
-            rows={3}
-          />
-        </label>
-        <button type="submit" className="primary-action" disabled={busy || !input.trim()}>
-          发送
-        </button>
-      </form>
-      <button type="button" className="primary-action" disabled={!progress.eligible_to_finish || busy} onClick={onFinish}>
-        {progress.eligible_to_finish ? '结束对话并进入后测' : '尚未达到完成条件，暂不能进入后测'}
-      </button>
     </section>
   );
 }

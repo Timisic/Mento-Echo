@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_15_major_umics_only"
+QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_18_major_umics_age"
 
 Phase = Literal["pre", "post"]
 
@@ -51,6 +51,13 @@ SCALE_PROFILES: dict[str, ScaleProfile] = {
         key="grade_options",
         value_type="categorical",
         options=("大一", "大二", "大三", "大四", "硕士研究生", "博士研究生"),
+    ),
+    "age_years": ScaleProfile(
+        key="age_years",
+        value_type="integer",
+        min_value=16,
+        max_value=60,
+        labels={"16": "16岁", "60": "60岁"},
     ),
     "identity_distress_1_5": ScaleProfile(
         key="identity_distress_1_5",
@@ -154,6 +161,7 @@ def build_items() -> tuple[QuestionnaireItem, ...]:
 
     add("pre", "pre_demo_gender", "您的性别", "single_choice", "gender_options", "demographics", "gender")
     add("pre", "pre_demo_grade", "您目前在读：", "single_choice", "grade_options", "demographics", "grade")
+    add("pre", "pre_demo_age", "您的年龄", "number_input", "age_years", "demographics", "age")
     for i, text in enumerate(identity_distress_texts, 1):
         add(
             "pre",
@@ -213,7 +221,6 @@ def build_items() -> tuple[QuestionnaireItem, ...]:
     for dimension, n, text in [
         ("autonomy_satisfaction", "01", "在刚才这次对话中，我觉得自己可以按照自己的想法去思考和自己未来有关的内容。"),
         ("autonomy_satisfaction", "02", "在这次对话中，我觉得自己是在从自己的立场出发看待这些问题。"),
-        ("autonomy_satisfaction", "03", "在这次对话中，我觉得自己是在从自己的立场出发看待这些问题。"),
         ("autonomy_satisfaction", "04", "这次对话让我觉得，关于自己未来方向的思考是由我自己主导的。"),
         ("autonomy_satisfaction", "05", "在这次对话中，我觉得自己可以比较自由地表达对这些问题的真实想法。"),
         ("relatedness_satisfaction", "01", "在这次对话中，我觉得自己的想法被认真对待了。"),
