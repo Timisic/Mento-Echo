@@ -134,7 +134,11 @@ def test_full_participant_path_pre_dialogue_post_completed(client, admin_headers
 
     post_definition = client.get(f"/api/participant/sessions/{session_id}/questionnaires/post")
     assert post_definition.status_code == 200
-    assert len(post_definition.json()["items"]) == 36
+    assert len(post_definition.json()["items"]) == 40
+    assert any(
+        item["item_key"] == "post_ai_warmth_01"
+        for item in post_definition.json()["items"]
+    )
     post_submit = client.post(
         f"/api/participant/sessions/{session_id}/questionnaires/post/submit",
         json={"responses": responses_for_phase("post")},

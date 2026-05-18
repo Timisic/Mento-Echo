@@ -658,6 +658,11 @@ function buildQuestionnaireGroups(definition: QuestionnaireDefinition): Question
       items: byInstrument('ai_anthropomorphism')
     },
     {
+      title: 'AI 温暖感知',
+      description: '请根据你刚才与该 AI 的互动体验，判断以下说法在多大程度上符合你的感受。1 = 非常不同意，7 = 非常同意。',
+      items: byInstrument('ai_warmth')
+    },
+    {
       title: '对话体验',
       description: '请根据这次 AI 对话过程作答。',
       items: byInstrument('bpnsfs_adapted_dialogue_experience')

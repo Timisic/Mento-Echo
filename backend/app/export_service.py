@@ -40,6 +40,8 @@ EXPORT_FILES = (
     "ai_call_records.csv",
     "export_manifest.json",
 )
+TOPIC_VALIDITY_EXCLUSION_THRESHOLD = 0.30
+TOPIC_VALIDITY_EXCLUSION_THRESHOLD_LABEL = "> 0.30"
 
 
 def build_export_zip(db: Session, *, admin_id: str) -> tuple[bytes, str]:
@@ -168,6 +170,13 @@ def _session_rows(db: Session) -> list[dict[str, Any]]:
                 "excluded": session.excluded,
                 "exclusion_reason": session.exclusion_reason,
                 "excluded_at": session.excluded_at,
+                "topic_validity_status": session.topic_validity_status,
+                "topic_off_track_ratio": session.topic_off_track_ratio,
+                "topic_off_track_gt_30pct": _topic_off_track_gt_30pct(session),
+                "topic_validity_exclusion_threshold": TOPIC_VALIDITY_EXCLUSION_THRESHOLD_LABEL,
+                "topic_validity_notes": session.topic_validity_notes,
+                "topic_validity_coded_at": session.topic_validity_coded_at,
+                "analysis_sample_status": _analysis_sample_status(session),
             }
         )
     return rows
@@ -275,6 +284,11 @@ def _analysis_dataset_rows(db: Session) -> list[dict[str, Any]]:
             "resume_count": session.resume_count if session else 0,
             "pre_attention_check_passed": attention_by_code.get(participant.participant_code, {}).get("pre"),
             "post_attention_check_passed": attention_by_code.get(participant.participant_code, {}).get("post"),
+            "topic_validity_status": session.topic_validity_status if session else "not_ready",
+            "topic_off_track_ratio": session.topic_off_track_ratio if session else None,
+            "topic_off_track_gt_30pct": _topic_off_track_gt_30pct(session) if session else None,
+            "topic_validity_exclusion_threshold": TOPIC_VALIDITY_EXCLUSION_THRESHOLD_LABEL,
+            "analysis_sample_status": _analysis_sample_status(session),
         }
         score_prefixes = sorted({(instrument, dimension) for instrument, dimension, _ in participant_scores})
         for instrument, dimension in score_prefixes:
@@ -295,30 +309,56 @@ def _field_token(value: str) -> str:
     return token or "unknown"
 
 
+def _topic_off_track_gt_30pct(session: ExperimentSession) -> bool | None:
+    if session.topic_off_track_ratio is None:
+        return None
+    return session.topic_off_track_ratio > TOPIC_VALIDITY_EXCLUSION_THRESHOLD
+
+
+def _analysis_sample_status(session: ExperimentSession | None) -> str:
+    if session is None or session.chat_completed_at is None:
+        return "not_ready"
+    if session.topic_validity_status == "off_topic_excluded":
+        return "off_topic_excluded"
+    if session.excluded or session.status == "excluded":
+        return "admin_excluded"
+    if session.topic_off_track_ratio is None:
+        return "pending_topic_validity_coding"
+    return "valid"
+
+
 def _chat_message_rows(db: Session) -> list[dict[str, Any]]:
     messages = db.scalars(
         select(ChatMessage).order_by(ChatMessage.participant_code, ChatMessage.message_index)
     ).all()
-    session_group_by_id = {
-        session.id: session.group
+    sessions_by_id = {
+        session.id: session
         for session in db.scalars(select(ExperimentSession)).all()
     }
-    return [
-        {
-            "experiment_session_id": message.experiment_session_id,
-            "participant_code": message.participant_code,
-            "group": session_group_by_id.get(message.experiment_session_id),
-            "message_index": message.message_index,
-            "role": message.role,
-            "content": message.content,
-            "created_at": message.created_at,
-            "provider_name": message.provider_name,
-            "model_name": message.model_name,
-            "system_prompt_version": message.system_prompt_version,
-            "generation_params": message.generation_params,
-        }
-        for message in messages
-    ]
+    rows: list[dict[str, Any]] = []
+    for message in messages:
+        session = sessions_by_id.get(message.experiment_session_id)
+        rows.append(
+            {
+                "experiment_session_id": message.experiment_session_id,
+                "participant_code": message.participant_code,
+                "group": session.group if session else None,
+                "topic_validity_status": session.topic_validity_status if session else "not_ready",
+                "topic_off_track_ratio": session.topic_off_track_ratio if session else None,
+                "topic_off_track_gt_30pct": _topic_off_track_gt_30pct(session) if session else None,
+                "topic_validity_exclusion_threshold": TOPIC_VALIDITY_EXCLUSION_THRESHOLD_LABEL,
+                "analysis_sample_status": _analysis_sample_status(session),
+                "message_index": message.message_index,
+                "role": message.role,
+                "content": message.content,
+                "created_at": message.created_at,
+                "provider_name": message.provider_name,
+                "model_name": message.model_name,
+                "system_prompt_version": message.system_prompt_version,
+                "generation_params": message.generation_params,
+            }
+        )
+    return rows
 
 
 def _behavior_event_rows(db: Session) -> list[dict[str, Any]]:
@@ -412,7 +452,8 @@ must not become a competing source of truth.
 - `questionnaire_responses.csv`: long-form raw questionnaire responses.
 - `questionnaire_scores.csv`: long-form derived questionnaire scores.
 - `analysis_dataset.csv`: one row per participant for routine analysis. It intentionally excludes raw chat text.
-- `chat_messages.jsonl`: SENSITIVE RAW CHAT export containing participant and assistant message content.
+- Topic validity fields: `topic_off_track_ratio`, `topic_off_track_gt_30pct`, `topic_validity_status`, and `analysis_sample_status` support manual coding and exclusion when the off-topic ratio is greater than 30%.
+- `chat_messages.jsonl`: SENSITIVE RAW CHAT export containing participant and assistant message content plus session-level topic-validity coding fields.
 - `behavior_events.jsonl`: participant/technical lifecycle events.
 - `audit_logs.csv`: researcher administrator action history.
 - `ai_call_records.csv`: AI provider diagnostics derived from assistant message records.

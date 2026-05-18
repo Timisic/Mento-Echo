@@ -190,6 +190,8 @@ class ParticipantRegistryService:
 
 
 class ExperimentSessionService:
+    TOPIC_EXCLUSION_REASON = "topic_validity_off_track_ratio_gt_30pct"
+
     @staticmethod
     def enter_participant_code(db: Session, *, participant_code: str) -> tuple[Participant, ExperimentSession, bool]:
         normalized_code = normalize_participant_code(participant_code)
@@ -323,6 +325,62 @@ class ExperimentSessionService:
             session=session,
             stage=session.status,
             metadata={"reason": clean_reason},
+        )
+        db.commit()
+        db.refresh(session)
+        return session
+
+    @staticmethod
+    def record_topic_validity(
+        db: Session,
+        *,
+        session: ExperimentSession,
+        participant: Participant,
+        admin_id: str,
+        off_track_ratio: float,
+        notes: str | None = None,
+    ) -> ExperimentSession:
+        timestamp = now_utc()
+        off_topic_excluded = off_track_ratio > 0.30
+        session.topic_off_track_ratio = off_track_ratio
+        session.topic_validity_status = "off_topic_excluded" if off_topic_excluded else "valid"
+        session.topic_validity_notes = notes.strip() if notes and notes.strip() else None
+        session.topic_validity_coded_at = timestamp
+        if off_topic_excluded:
+            session.excluded = True
+            session.exclusion_reason = ExperimentSessionService.TOPIC_EXCLUSION_REASON
+            session.excluded_at = timestamp
+            session.status = "excluded"
+        elif session.exclusion_reason == ExperimentSessionService.TOPIC_EXCLUSION_REASON:
+            session.excluded = False
+            session.exclusion_reason = None
+            session.excluded_at = None
+            session.status = "completed" if session.completed_at else "reset_required"
+        session.updated_at = timestamp
+        log_audit(
+            db,
+            admin_id=admin_id,
+            action="topic_validity_coded",
+            target_type="experiment_session",
+            target_id=session.id,
+            reason=session.topic_validity_status,
+            metadata={
+                "participant_code": participant.participant_code,
+                "off_track_ratio": off_track_ratio,
+                "exclusion_threshold": "> 0.30",
+            },
+        )
+        log_behavior(
+            db,
+            event_type="topic_validity_coded",
+            participant=participant,
+            session=session,
+            stage=session.status,
+            metadata={
+                "off_track_ratio": off_track_ratio,
+                "topic_validity_status": session.topic_validity_status,
+                "exclusion_threshold": "> 0.30",
+            },
         )
         db.commit()
         db.refresh(session)
@@ -557,7 +615,12 @@ class QuestionnaireService:
                 if by_key.get(key) is not None and by_key[key].response_value is not None
             ]
             missing_items = [key for key in rule.item_keys if by_key.get(key) is None or by_key[key].response_value is None]
-            score_value = round(sum(values) / len(values), 6) if values else None
+            if not values:
+                score_value = None
+            elif rule.aggregation == "sum":
+                score_value = float(sum(values))
+            else:
+                score_value = round(sum(values) / len(values), 6)
             score = QuestionnaireScore(
                 experiment_session_id=session.id,
                 participant_code=participant.participant_code,
@@ -851,6 +914,11 @@ def to_status_row(participant: Participant) -> StatusRow:
             completed=False,
             excluded=False,
             exclusion_reason=None,
+            topic_off_track_ratio=None,
+            topic_off_track_gt_30pct=None,
+            topic_validity_status="not_ready",
+            topic_validity_notes=None,
+            topic_validity_coded_at=None,
             resume_count=0,
             last_seen_at=None,
         )
@@ -883,6 +951,15 @@ def to_status_row(participant: Participant) -> StatusRow:
         completed=session.completed_at is not None or session.status == "completed",
         excluded=session.excluded or session.status == "excluded",
         exclusion_reason=session.exclusion_reason,
+        topic_off_track_ratio=session.topic_off_track_ratio,
+        topic_off_track_gt_30pct=(
+            session.topic_off_track_ratio > 0.30
+            if session.topic_off_track_ratio is not None
+            else None
+        ),
+        topic_validity_status=session.topic_validity_status,
+        topic_validity_notes=session.topic_validity_notes,
+        topic_validity_coded_at=session.topic_validity_coded_at,
         resume_count=session.resume_count,
         last_seen_at=session.last_seen_at,
     )

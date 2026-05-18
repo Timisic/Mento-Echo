@@ -171,6 +171,11 @@ const adminRow = {
   completed: false,
   excluded: false,
   exclusion_reason: null,
+  topic_off_track_ratio: null,
+  topic_off_track_gt_30pct: null,
+  topic_validity_status: 'pending_manual_coding',
+  topic_validity_notes: null,
+  topic_validity_coded_at: null,
   resume_count: 1,
   last_seen_at: '2026-05-16T05:07:00Z'
 };

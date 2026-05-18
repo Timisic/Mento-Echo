@@ -41,6 +41,7 @@ class ScoreRule:
     instrument: str
     dimension: str
     item_keys: tuple[str, ...]
+    aggregation: Literal["mean", "sum"] = "mean"
 
 
 SCALE_PROFILES: dict[str, ScaleProfile] = {
@@ -218,6 +219,24 @@ def build_items() -> tuple[QuestionnaireItem, ...]:
             "ai_anthropomorphism",
             dimension,
         )
+    for i, text in enumerate(
+        [
+            "在刚才的对话中，这个 AI 的回应是温和的。",
+            "这个 AI 对我是友善的。",
+            "这个 AI 的表达让我感到有善意。",
+            "这个 AI 的回应是真诚的。",
+        ],
+        1,
+    ):
+        add(
+            "post",
+            f"post_ai_warmth_{i:02d}",
+            text,
+            "single_choice",
+            "agreement_1_7",
+            "ai_warmth",
+            "warmth_perception",
+        )
     for dimension, n, text in [
         ("autonomy_satisfaction", "01", "在刚才这次对话中，我觉得自己可以按照自己的想法去思考和自己未来有关的内容。"),
         ("autonomy_satisfaction", "02", "在这次对话中，我觉得自己是在从自己的立场出发看待这些问题。"),
@@ -253,10 +272,31 @@ def score_rules_for_phase(phase: Phase) -> tuple[ScoreRule, ...]:
     for item in items:
         if item.instrument in {"demographics", "attention_check"} or item.attention_check:
             continue
+        if item.instrument == "ai_warmth":
+            continue
         grouped.setdefault((item.instrument, item.dimension), []).append(item.item_key)
     for (instrument, dimension), keys in grouped.items():
         rules.append(ScoreRule(phase=phase, instrument=instrument, dimension=dimension, item_keys=tuple(keys)))
     if phase == "post":
+        ai_warmth_keys = tuple(item.item_key for item in items if item.instrument == "ai_warmth")
+        if ai_warmth_keys:
+            rules.extend(
+                [
+                    ScoreRule(
+                        phase="post",
+                        instrument="ai_warmth",
+                        dimension="mean",
+                        item_keys=ai_warmth_keys,
+                    ),
+                    ScoreRule(
+                        phase="post",
+                        instrument="ai_warmth",
+                        dimension="sum",
+                        item_keys=ai_warmth_keys,
+                        aggregation="sum",
+                    ),
+                ]
+            )
         bpnsfs_keys = tuple(
             item.item_key
             for item in items
