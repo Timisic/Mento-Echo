@@ -18,7 +18,7 @@ const session = {
 };
 
 const preQuestionnaire = {
-  questionnaire_version: 'mentor_echo_questionnaire_v2026_05_15_major_umics_only',
+  questionnaire_version: 'mentor_echo_questionnaire_v2026_05_18_major_umics_age',
   phase: 'pre',
   locked: false,
   items: [
@@ -38,6 +38,19 @@ const preQuestionnaire = {
     {
       phase: 'pre',
       order: 2,
+      item_key: 'pre_demo_age',
+      item_text: '您的年龄',
+      item_type: 'number_input',
+      scale: 'age_years',
+      instrument: 'demographics',
+      dimension: 'age',
+      reverse_scored: false,
+      required: true,
+      attention_check: false
+    },
+    {
+      phase: 'pre',
+      order: 3,
       item_key: 'pre_identity_distress_01',
       item_text: '我会因为未来发展方向不清楚而感到困扰。',
       item_type: 'matrix_single_choice',
@@ -50,7 +63,7 @@ const preQuestionnaire = {
     },
     {
       phase: 'pre',
-      order: 3,
+      order: 4,
       item_key: 'pre_ac_umics_select_5',
       item_text: '这道题请选择5',
       item_type: 'matrix_single_choice',
@@ -70,6 +83,14 @@ const preQuestionnaire = {
       max_value: null,
       labels: null,
       options: ['男', '女']
+    },
+    age_years: {
+      key: 'age_years',
+      value_type: 'integer',
+      min_value: 16,
+      max_value: 60,
+      labels: { '16': '16岁', '60': '60岁' },
+      options: []
     },
     identity_distress_1_5: {
       key: 'identity_distress_1_5',
@@ -194,13 +215,12 @@ describe('Mentor Echo 前端试点 UI', () => {
     expect(screen.getByRole('button', { name: '我是被试，进入实验' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '我是研究者，进入管理后台' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '导出 ZIP' })).not.toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(screen.getByTestId('health-status')).toHaveTextContent('后端 ok，数据库正常');
-    });
+    expect(screen.queryByTestId('health-status')).not.toBeInTheDocument();
+    expect(screen.queryByText(/后端|数据库/)).not.toBeInTheDocument();
   });
 
   it('被试路径隐藏内部字段，并用分组问卷和对话进度推进', async () => {
+    let resolveSendMessage: ((value: Response) => void) | undefined;
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input).replace(baseUrl, '');
       if (url === '/api/health') return jsonResponse({ app: 'ok', database: { ok: true } });
@@ -212,7 +232,7 @@ describe('Mentor Echo 前端试点 UI', () => {
           phase: 'pre',
           questionnaire_version: preQuestionnaire.questionnaire_version,
           locked: true,
-          response_count: 3,
+          response_count: 4,
           scores: [],
           session: { ...session, status: 'pre_survey_submitted' }
         });
@@ -227,6 +247,11 @@ describe('Mentor Echo 前端试点 UI', () => {
         });
       }
       if (url === '/api/participant/sessions/session-1/dialogue') return jsonResponse(dialogueState);
+      if (url === '/api/participant/sessions/session-1/dialogue/messages') {
+        return new Promise<Response>((resolve) => {
+          resolveSendMessage = resolve;
+        });
+      }
       return Promise.reject(new Error(`Unexpected request ${url}`));
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -246,6 +271,7 @@ describe('Mentor Echo 前端试点 UI', () => {
     expect(await screen.findByRole('heading', { name: '基本信息' })).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '男' }));
+    fireEvent.change(screen.getByPlaceholderText('请输入年龄'), { target: { value: '20' } });
     fireEvent.click(screen.getByRole('button', { name: '下一页' }));
 
     expect(await screen.findByRole('heading', { name: '身份困扰' })).toBeInTheDocument();
@@ -260,14 +286,28 @@ describe('Mentor Echo 前端试点 UI', () => {
     expect(await screen.findByRole('heading', { name: 'AI 对话说明' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '开始 AI 对话' }));
 
-    expect(await screen.findByRole('heading', { name: '请自然完成本阶段对话' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '围绕专业与未来方向展开对话' })).toBeInTheDocument();
     expect(screen.getByText('消息数：3 / 10')).toBeInTheDocument();
     expect(screen.getByText('对话时长：04:21 / 15:00')).toBeInTheDocument();
-    expect(screen.getByText('当前状态：尚未达到完成条件')).toBeInTheDocument();
-    expect(screen.getByText('完成资格由平台规则判断，不是由 AI 批准。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '尚未达到完成条件，暂不能进入后测' })).toBeDisabled();
+    expect(screen.getByText('尚未达到完成条件')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '暂不能进入后测' })).toBeDisabled();
     expect(screen.queryByText('experiment_identity_dialogue_v1')).not.toBeInTheDocument();
     expect(screen.queryByText('mock-model')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('对话内容'), { target: { value: '我在想是否继续读当前专业。' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    expect(await screen.findByText('我在想是否继续读当前专业。')).toBeInTheDocument();
+    expect(screen.getByLabelText('对话内容')).toHaveValue('');
+    expect(screen.getByLabelText('thinking')).toBeInTheDocument();
+
+    resolveSendMessage?.(
+      {
+        ok: true,
+        json: async () => ({ progress: dialogueState.progress, status: 'chat_in_progress' }),
+        text: async () => ''
+      } as Response
+    );
   });
 
   it('研究者登录后显示仪表盘，并在导出前提示敏感原始聊天', async () => {
