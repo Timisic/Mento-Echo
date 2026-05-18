@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.models import AuditLog, QuestionnaireResponse, QuestionnaireScore
+from app.models import AuditLog, ExperimentSession, QuestionnaireResponse, QuestionnaireScore
 from app.questionnaire_config import ITEMS_BY_KEY, get_items
 from tests.conftest import import_participants
 
@@ -136,3 +136,60 @@ def test_post_questionnaire_is_available_only_after_dialogue_completion(client, 
 
     blocked = client.get(f"/api/participant/sessions/{session_id}/questionnaires/post")
     assert blocked.status_code == 409
+
+
+def test_post_questionnaire_stores_ai_warmth_separately_from_anthropomorphism(
+    client, admin_headers, db_session
+):
+    session_id = create_session(client, admin_headers, code="QWARM")
+    session = db_session.get(ExperimentSession, session_id)
+    assert session is not None
+    session.status = "chat_completed"
+    db_session.commit()
+
+    definition = client.get(f"/api/participant/sessions/{session_id}/questionnaires/post")
+
+    assert definition.status_code == 200, definition.text
+    body = definition.json()
+    assert len(body["items"]) == 40
+    warmth_items = [item for item in body["items"] if item["instrument"] == "ai_warmth"]
+    assert [item["item_key"] for item in warmth_items] == [
+        "post_ai_warmth_01",
+        "post_ai_warmth_02",
+        "post_ai_warmth_03",
+        "post_ai_warmth_04",
+    ]
+    assert [item["item_text"] for item in warmth_items] == [
+        "在刚才的对话中，这个 AI 的回应是温和的。",
+        "这个 AI 对我是友善的。",
+        "这个 AI 的表达让我感到有善意。",
+        "这个 AI 的回应是真诚的。",
+    ]
+    assert all(item["scale"] == "agreement_1_7" for item in warmth_items)
+    assert len([item for item in body["items"] if item["instrument"] == "ai_anthropomorphism"]) == 5
+
+    payload = responses_for_phase("post", numeric_value=4)
+    for item in warmth_items:
+        payload[item["item_key"]] = 6
+    submit = client.post(
+        f"/api/participant/sessions/{session_id}/questionnaires/post/submit",
+        json={"responses": payload},
+    )
+
+    assert submit.status_code == 200, submit.text
+    assert submit.json()["response_count"] == 40
+    stored_warmth = db_session.query(QuestionnaireResponse).filter_by(
+        experiment_session_id=session_id,
+        phase="post",
+        instrument="ai_warmth",
+    ).all()
+    assert len(stored_warmth) == 4
+    assert {row.response_value for row in stored_warmth} == {6}
+
+    scores = db_session.query(QuestionnaireScore).filter_by(
+        experiment_session_id=session_id,
+        phase="post",
+        instrument="ai_warmth",
+    ).all()
+    score_by_dimension = {score.dimension: score.score for score in scores}
+    assert score_by_dimension == {"mean": 6.0, "sum": 24.0}

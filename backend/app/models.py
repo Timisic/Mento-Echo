@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -54,6 +54,12 @@ class ExperimentSession(Base):
     excluded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     exclusion_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     excluded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    topic_off_track_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    topic_validity_status: Mapped[str] = mapped_column(
+        String(32), default="pending_manual_coding", nullable=False
+    )
+    topic_validity_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    topic_validity_coded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     participant_turn_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     dialogue_elapsed_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     dialogue_finish_decision: Mapped[str | None] = mapped_column(String(64), nullable=True)

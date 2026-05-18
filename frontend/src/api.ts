@@ -25,6 +25,11 @@ export type AdminStatusRow = {
   completed: boolean;
   excluded: boolean;
   exclusion_reason: string | null;
+  topic_off_track_ratio: number | null;
+  topic_off_track_gt_30pct: boolean | null;
+  topic_validity_status: string;
+  topic_validity_notes: string | null;
+  topic_validity_coded_at: string | null;
   resume_count: number;
   last_seen_at: string | null;
 };

@@ -39,6 +39,8 @@ from app.schemas import (
     SendMessageRequest,
     SendMessageResponse,
     TransitionRequest,
+    TopicValidityCodingRequest,
+    TopicValidityCodingResponse,
 )
 from app.services import (
     DialogueService,
@@ -210,6 +212,40 @@ def exclude_session(
     return ExcludeSessionResponse(
         experiment_session_id=updated.id,
         status=updated.status,
+        excluded=updated.excluded,
+        exclusion_reason=updated.exclusion_reason,
+    )
+
+
+@app.post(
+    "/api/admin/sessions/{session_id}/topic-validity",
+    response_model=TopicValidityCodingResponse,
+)
+def record_topic_validity(
+    session_id: str,
+    payload: TopicValidityCodingRequest,
+    admin_id: str = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> TopicValidityCodingResponse:
+    session, participant = _get_session_and_participant(db, session_id)
+    updated = ExperimentSessionService.record_topic_validity(
+        db,
+        session=session,
+        participant=participant,
+        admin_id=admin_id,
+        off_track_ratio=payload.off_track_ratio,
+        notes=payload.notes,
+    )
+    assert updated.topic_validity_coded_at is not None
+    return TopicValidityCodingResponse(
+        experiment_session_id=updated.id,
+        topic_off_track_ratio=updated.topic_off_track_ratio or 0.0,
+        topic_off_track_gt_30pct=bool(
+            updated.topic_off_track_ratio is not None and updated.topic_off_track_ratio > 0.30
+        ),
+        topic_validity_status=updated.topic_validity_status,  # type: ignore[arg-type]
+        topic_validity_notes=updated.topic_validity_notes,
+        topic_validity_coded_at=updated.topic_validity_coded_at,
         excluded=updated.excluded,
         exclusion_reason=updated.exclusion_reason,
     )

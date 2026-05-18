@@ -1,7 +1,7 @@
 """dialogue protocol boundaries
 
-Revision ID: 0004_dialogue_protocol
-Revises: 0003_admin_export
+Revision ID: 0005_dialogue_protocol
+Revises: 0004_topic_validity
 Create Date: 2026-05-18
 """
 
@@ -10,8 +10,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0004_dialogue_protocol"
-down_revision = "0003_admin_export"
+revision = "0005_dialogue_protocol"
+down_revision = "0004_topic_validity"
 branch_labels = None
 depends_on = None
 

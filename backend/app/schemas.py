@@ -109,6 +109,11 @@ class StatusRow(BaseModel):
     completed: bool
     excluded: bool
     exclusion_reason: str | None
+    topic_off_track_ratio: float | None
+    topic_off_track_gt_30pct: bool | None
+    topic_validity_status: str
+    topic_validity_notes: str | None
+    topic_validity_coded_at: datetime | None
     resume_count: int
     last_seen_at: datetime | None
 
@@ -207,6 +212,22 @@ class ExcludeSessionRequest(BaseModel):
 class ExcludeSessionResponse(BaseModel):
     experiment_session_id: str
     status: SessionStatus
+    excluded: bool
+    exclusion_reason: str | None
+
+
+class TopicValidityCodingRequest(BaseModel):
+    off_track_ratio: float = Field(ge=0, le=1)
+    notes: str | None = None
+
+
+class TopicValidityCodingResponse(BaseModel):
+    experiment_session_id: str
+    topic_off_track_ratio: float
+    topic_off_track_gt_30pct: bool
+    topic_validity_status: Literal["valid", "off_topic_excluded"]
+    topic_validity_notes: str | None
+    topic_validity_coded_at: datetime
     excluded: bool
     exclusion_reason: str | None
 
