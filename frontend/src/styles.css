@@ -130,6 +130,18 @@ li {
   padding-block: var(--space-md) var(--space-xl);
 }
 
+.app-shell:has(.dialogue-flow) {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  block-size: 100dvh;
+  overflow: hidden;
+  padding-block: var(--space-sm);
+}
+
+.app-shell:has(.dialogue-flow) .topbar {
+  margin-block-end: var(--space-sm);
+}
+
 .topbar,
 .flow-header,
 .section-heading,
@@ -201,6 +213,11 @@ li {
 .flow {
   display: grid;
   gap: var(--space-lg);
+}
+
+.dialogue-flow {
+  min-block-size: 0;
+  gap: 0;
 }
 
 .flow-header {
@@ -490,14 +507,17 @@ li {
 
 .dialogue-layout {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: var(--space-md);
+  min-block-size: 0;
 }
 
 .dialogue-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-columns: minmax(0, 1fr) 250px;
   gap: var(--space-lg);
-  align-items: start;
+  align-items: stretch;
+  min-block-size: 0;
 }
 
 .chat-panel,
@@ -509,6 +529,15 @@ li {
   background: var(--surface);
   padding: var(--space-lg);
   box-shadow: 0 10px 28px oklch(35% 0.04 245 / 0.05);
+}
+
+.chat-panel {
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-block-size: 0;
+}
+
+.dialogue-sidebar {
+  align-content: start;
 }
 
 .dialogue-progress {
@@ -529,8 +558,7 @@ li {
   display: grid;
   align-content: start;
   gap: var(--space-sm);
-  min-block-size: min(48vh, 440px);
-  max-block-size: min(54vh, 480px);
+  min-block-size: 0;
   overflow: auto;
   background: var(--surface);
   padding: var(--space-sm);
@@ -578,12 +606,33 @@ li {
 }
 
 .markdown-content p,
-.markdown-content ul {
+.markdown-content ul,
+.markdown-content ol,
+.markdown-content pre,
+.markdown-content h3 {
   margin-block: 0 var(--space-sm);
 }
 
 .markdown-content > :last-child {
   margin-block-end: 0;
+}
+
+.markdown-content h3 {
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.markdown-content a {
+  color: var(--primary);
+  font-weight: 700;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.16em;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  padding-inline-start: 1.2rem;
 }
 
 .markdown-content code {
@@ -592,11 +641,30 @@ li {
   padding: 0.08rem 0.28rem;
 }
 
+.markdown-content pre {
+  overflow-x: auto;
+  border-radius: 8px;
+  background: var(--surface-strong);
+  padding: var(--space-sm);
+}
+
+.markdown-content pre code {
+  display: block;
+  background: transparent;
+  padding: 0;
+  white-space: pre;
+}
+
 .chat-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-md);
   align-items: end;
+}
+
+.chat-form textarea {
+  max-block-size: 7rem;
+  resize: none;
 }
 
 .management-section {
@@ -734,6 +802,25 @@ td {
     overflow-x: auto;
     padding-block: var(--space-xs);
   }
+
+  .dialogue-shell {
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: var(--space-md);
+  }
+
+  .dialogue-sidebar {
+    padding: var(--space-md);
+  }
+
+  .dialogue-progress {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+    column-gap: var(--space-md);
+  }
+
+  .dialogue-progress h3 {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 640px) {
@@ -770,6 +857,36 @@ td {
 
   .message {
     inline-size: 100%;
+  }
+
+  .app-shell:has(.dialogue-flow) {
+    inline-size: min(100% - 16px, 1180px);
+  }
+
+  .dialogue-layout {
+    gap: var(--space-sm);
+  }
+
+  .dialogue-layout .section-heading {
+    gap: var(--space-sm);
+    margin-block-end: 0;
+  }
+
+  .dialogue-layout .section-heading h2 {
+    font-size: 1.2rem;
+  }
+
+  .dialogue-layout .section-heading p:not(.eyebrow) {
+    font-size: 0.92rem;
+  }
+
+  .chat-panel {
+    padding: var(--space-md);
+  }
+
+  .dialogue-progress {
+    grid-template-columns: 1fr;
+    gap: var(--space-xs);
   }
 }
 

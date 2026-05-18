@@ -131,7 +131,8 @@ const dialogueState = {
       id: 'message-1',
       message_index: 1,
       role: 'assistant',
-      content: '**你好**，请从你愿意分享的内容开始。',
+      content:
+        '**你好**，请从你愿意分享的内容开始。\n\n- 列出一个想法\n1. 再补充一个步骤\n\n可以参考[资料](https://example.com/guide)，不要打开[危险](javascript:alert(1))。\n\n```ts\nconst choice = \"major\";\n```\n\n<script>alert(\"xss\")</script>',
       provider_name: 'mock',
       model_name: 'mock-model',
       system_prompt_version: 'experiment_identity_dialogue_v1',
@@ -256,7 +257,7 @@ describe('Mentor Echo 前端试点 UI', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<App />);
+    const { container } = render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: '我是被试，进入实验' }));
     fireEvent.change(screen.getByLabelText('被试编号'), { target: { value: 'PILOT001' } });
@@ -291,6 +292,10 @@ describe('Mentor Echo 前端试点 UI', () => {
     expect(screen.getByText('对话时长：04:21 / 15:00')).toBeInTheDocument();
     expect(screen.getByText('尚未达到完成条件')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '暂不能进入后测' })).toBeDisabled();
+    expect(screen.getByRole('link', { name: '资料' })).toHaveAttribute('href', 'https://example.com/guide');
+    expect(screen.queryByRole('link', { name: '危险' })).not.toBeInTheDocument();
+    expect(container.querySelector('.markdown-content pre code')?.textContent).toBe('const choice = "major";');
+    expect(container.querySelector('.markdown-content script')).toBeNull();
     expect(screen.queryByText('experiment_identity_dialogue_v1')).not.toBeInTheDocument();
     expect(screen.queryByText('mock-model')).not.toBeInTheDocument();
 
@@ -300,6 +305,7 @@ describe('Mentor Echo 前端试点 UI', () => {
     expect(await screen.findByText('我在想是否继续读当前专业。')).toBeInTheDocument();
     expect(screen.getByLabelText('对话内容')).toHaveValue('');
     expect(screen.getByLabelText('thinking')).toBeInTheDocument();
+    expect(screen.queryByText('正在处理，请稍候。')).not.toBeInTheDocument();
 
     resolveSendMessage?.(
       {
