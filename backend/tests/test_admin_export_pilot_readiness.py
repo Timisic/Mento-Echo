@@ -203,13 +203,31 @@ def test_export_package_structure_content_and_privacy_boundaries(client, admin_h
         assert analysis_row["participant_code"] == "EXPORT01"
         assert analysis_row["completed"] == "True"
         assert analysis_row["excluded"] == "False"
+        assert analysis_row["analysis_sample_status"] == "pending_topic_validity_coding"
+        assert analysis_row["topic_validity_status"] == "pending_manual_coding"
+        assert analysis_row["topic_validity_exclusion_threshold"] == "> 0.30"
+        assert analysis_row["ai_warmth_mean_post"] == "5.0"
+        assert analysis_row["ai_warmth_sum_post"] == "20.0"
         assert "raw identity reflection text" not in json.dumps(analysis_row, ensure_ascii=False)
         assert not any("content" in column or "message" in column for column in analysis_row)
         assert any(column.endswith("_change") for column in analysis_row)
 
+        questionnaire_responses = _csv_rows(archive, _member(names, "questionnaire_responses.csv"))
+        assert {
+            row["item_key"] for row in questionnaire_responses if row["instrument"] == "ai_warmth"
+        } == {
+            "post_ai_warmth_01",
+            "post_ai_warmth_02",
+            "post_ai_warmth_03",
+            "post_ai_warmth_04",
+        }
+
         chat_messages = _jsonl_rows(archive, _member(names, "chat_messages.jsonl"))
         assert any("raw identity reflection text" in str(message["content"]) for message in chat_messages)
         assert {message["role"] for message in chat_messages} == {"participant", "assistant"}
+        assert {message["analysis_sample_status"] for message in chat_messages} == {
+            "pending_topic_validity_coding"
+        }
 
         behavior_events = _jsonl_rows(archive, _member(names, "behavior_events.jsonl"))
         event_types = {str(event["event_type"]) for event in behavior_events}
@@ -264,3 +282,48 @@ def test_end_to_end_pilot_regression_flow_reaches_dashboard_and_export(
         analysis = _csv_rows(archive, _member(archive.namelist(), "analysis_dataset.csv"))
     assert len(analysis) == 1
     assert analysis[0]["participant_code"] == "E2E01"
+
+
+def test_topic_validity_manual_coding_marks_off_topic_exclusion_for_export(
+    client, admin_headers, db_session
+):
+    session_id = _complete_pilot_flow(client, admin_headers, db_session, code="TOPIC01")
+
+    coding = client.post(
+        f"/api/admin/sessions/{session_id}/topic-validity",
+        headers=admin_headers,
+        json={"off_track_ratio": 0.31, "notes": "manual coding: 31% off topic"},
+    )
+
+    assert coding.status_code == 200, coding.text
+    coding_body = coding.json()
+    assert coding_body["topic_off_track_ratio"] == 0.31
+    assert coding_body["topic_off_track_gt_30pct"] is True
+    assert coding_body["topic_validity_status"] == "off_topic_excluded"
+    assert coding_body["excluded"] is True
+    assert coding_body["exclusion_reason"] == "topic_validity_off_track_ratio_gt_30pct"
+
+    dashboard = client.get("/api/admin/status", headers=admin_headers)
+    row = dashboard.json()["participants"][0]
+    assert row["topic_off_track_ratio"] == 0.31
+    assert row["topic_off_track_gt_30pct"] is True
+    assert row["topic_validity_status"] == "off_topic_excluded"
+    assert row["excluded"] is True
+
+    export = client.post("/api/admin/export", headers=admin_headers)
+    assert export.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(export.content)) as archive:
+        names = archive.namelist()
+        sessions = _csv_rows(archive, _member(names, "experiment_sessions.csv"))
+        analysis = _csv_rows(archive, _member(names, "analysis_dataset.csv"))
+        chat_messages = _jsonl_rows(archive, _member(names, "chat_messages.jsonl"))
+
+    assert sessions[0]["topic_off_track_ratio"] == "0.31"
+    assert sessions[0]["topic_off_track_gt_30pct"] == "True"
+    assert sessions[0]["analysis_sample_status"] == "off_topic_excluded"
+    assert analysis[0]["topic_off_track_ratio"] == "0.31"
+    assert analysis[0]["topic_off_track_gt_30pct"] == "True"
+    assert analysis[0]["analysis_sample_status"] == "off_topic_excluded"
+    assert {message["analysis_sample_status"] for message in chat_messages} == {
+        "off_topic_excluded"
+    }
