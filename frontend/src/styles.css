@@ -554,6 +554,39 @@ li {
   color: var(--text);
 }
 
+.topic-banner,
+.topic-reminder {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.72rem 0.9rem;
+  font-weight: 750;
+}
+
+.topic-banner {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.topic-reminder {
+  background: var(--warning-soft);
+  color: var(--text);
+}
+
+.finish-choices {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.finish-choices p {
+  margin: 0;
+  color: var(--text);
+  font-weight: 650;
+}
+
+.finish-choices button {
+  inline-size: 100%;
+}
+
 .chat-window {
   display: grid;
   align-content: start;

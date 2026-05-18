@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -654,8 +655,31 @@ class QuestionnaireService:
 
 
 class DialogueService:
-    MIN_PARTICIPANT_TURNS = 10
-    MIN_ELAPSED_SECONDS = 15 * 60
+    MIN_PARTICIPANT_TURNS = 6
+    MIN_ELAPSED_SECONDS = 10 * 60
+    MAX_PARTICIPANT_TURNS = 12
+    MAX_ELAPSED_SECONDS = 20 * 60
+    CONTINUE_RELATED_MIN_EXTRA_TURNS = 2
+    CONTINUE_RELATED_MAX_EXTRA_TURNS = 4
+    REMINDER_TURN_INTERVAL = 3
+    REMINDER_SECONDS = 5 * 60
+    REMINDER_TEXT = "请确认接下来的提问仍围绕专业选择、未来方向、升学或就业展开。"
+    _NON_SUBSTANTIVE_TURNS = {
+        "嗯",
+        "嗯嗯",
+        "好的",
+        "好",
+        "行",
+        "可以",
+        "继续",
+        "继续吧",
+        "你说吧",
+        "说吧",
+        "ok",
+        "okay",
+        "yes",
+        "no",
+    }
 
     @staticmethod
     def start_or_get(db: Session, *, session: ExperimentSession, participant: Participant) -> list[ChatMessage]:
@@ -694,10 +718,16 @@ class DialogueService:
         content: str,
     ) -> tuple[ChatMessage, ChatMessage]:
         DialogueService._assert_dialogue_available(session)
+        if session.status == "chat_completed":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dialogue is already completed")
         if session.chat_started_at is None:
             DialogueService.start_or_get(db, session=session, participant=participant)
         if not content.strip():
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="message content is required")
+        progress_before = DialogueService.update_progress(db, session=session)
+        if progress_before["forced_to_finish"]:
+            db.commit()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dialogue has reached the ending limit")
         next_index = DialogueService._next_index(db, session_id=session.id)
         participant_message = ChatMessage(
             experiment_session_id=session.id,
@@ -796,18 +826,36 @@ class DialogueService:
 
     @staticmethod
     def update_progress(db: Session, *, session: ExperimentSession) -> dict[str, object]:
-        participant_turns = db.scalar(
-            select(func.count()).select_from(ChatMessage).where(
-                ChatMessage.experiment_session_id == session.id,
-                ChatMessage.role == "participant",
+        participant_messages = list(
+            db.scalars(
+                select(ChatMessage)
+                .where(ChatMessage.experiment_session_id == session.id, ChatMessage.role == "participant")
+                .order_by(ChatMessage.message_index)
             )
-        ) or 0
+        )
+        participant_turns = sum(
+            1 for message in participant_messages if DialogueService.is_effective_participant_turn(message.content)
+        )
         elapsed = 0
         if session.chat_started_at is not None:
             elapsed = elapsed_seconds_since(session.chat_started_at)
         session.participant_turn_count = int(participant_turns)
         session.dialogue_elapsed_seconds = elapsed
-        eligible = participant_turns >= DialogueService.MIN_PARTICIPANT_TURNS and elapsed >= DialogueService.MIN_ELAPSED_SECONDS
+
+        met_min_turns = participant_turns >= DialogueService.MIN_PARTICIPANT_TURNS
+        met_min_duration = elapsed >= DialogueService.MIN_ELAPSED_SECONDS
+        forced_finish_reason = DialogueService._forced_finish_reason(session, participant_turns, elapsed)
+        if forced_finish_reason:
+            session.dialogue_forced_finish_reason = forced_finish_reason
+
+        finish_prompt_visible = DialogueService._finish_prompt_visible(
+            session,
+            participant_turns=participant_turns,
+            met_min_turns=met_min_turns,
+            met_min_duration=met_min_duration,
+            forced_finish_reason=forced_finish_reason,
+        )
+        eligible = finish_prompt_visible or forced_finish_reason is not None
         if eligible and session.status == "chat_in_progress":
             session.status = "chat_eligible_to_finish"
             log_behavior(
@@ -818,30 +866,90 @@ class DialogueService:
                 stage="chat_eligible_to_finish",
                 metadata={"participant_turn_count": participant_turns, "dialogue_elapsed_seconds": elapsed},
             )
+        elif not eligible and session.status == "chat_eligible_to_finish":
+            session.status = "chat_in_progress"
+        reminder_due = (participant_turns > 0 and participant_turns % DialogueService.REMINDER_TURN_INTERVAL == 0) or (
+            elapsed >= DialogueService.REMINDER_SECONDS
+        )
         return {
             "participant_turn_count": int(participant_turns),
             "dialogue_elapsed_seconds": elapsed,
-            "met_min_turns": participant_turns >= DialogueService.MIN_PARTICIPANT_TURNS,
-            "met_min_duration": elapsed >= DialogueService.MIN_ELAPSED_SECONDS,
+            "met_min_turns": met_min_turns,
+            "met_min_duration": met_min_duration,
             "eligible_to_finish": eligible,
+            "finish_prompt_visible": finish_prompt_visible,
+            "forced_to_finish": forced_finish_reason is not None,
+            "forced_finish_reason": forced_finish_reason,
+            "finish_decision": session.dialogue_finish_decision,
+            "continue_until_turn_count": session.dialogue_continue_until_turn_count,
+            "reminder_due": reminder_due,
+            "reminder_text": DialogueService.REMINDER_TEXT,
         }
 
     @staticmethod
-    def finish(db: Session, *, session: ExperimentSession, participant: Participant) -> None:
+    def finish(db: Session, *, session: ExperimentSession, participant: Participant, decision: str) -> None:
+        DialogueService._assert_dialogue_available(session)
         progress = DialogueService.update_progress(db, session=session)
-        if not progress["eligible_to_finish"]:
+        if session.status == "chat_completed":
+            db.commit()
+            db.refresh(session)
+            return
+        if decision == "early_stop":
+            DialogueService._complete_dialogue(
+                db, session=session, participant=participant, metadata={**progress, "decision": decision}
+            )
+            return
+        if progress["forced_to_finish"]:
+            DialogueService._complete_dialogue(
+                db, session=session, participant=participant, metadata={**progress, "decision": decision}
+            )
+            return
+        if not progress["finish_prompt_visible"]:
             db.commit()
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dialogue is not eligible to finish")
-        if session.status == "chat_eligible_to_finish":
-            ExperimentSessionService.transition(db, session=session, next_status="chat_completed")
+        if decision == "can_end":
+            DialogueService._complete_dialogue(
+                db, session=session, participant=participant, metadata={**progress, "decision": decision}
+            )
+            return
+        if session.dialogue_finish_decision is not None:
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Dialogue continuation branch already selected",
+            )
+        if decision == "continue_related":
+            current_turns = int(progress["participant_turn_count"])
+            session.dialogue_finish_decision = decision
+            session.dialogue_finish_decision_turn_count = current_turns
+            session.dialogue_continue_until_turn_count = min(
+                DialogueService.MAX_PARTICIPANT_TURNS,
+                current_turns + DialogueService.CONTINUE_RELATED_MAX_EXTRA_TURNS,
+            )
+            session.status = "chat_in_progress"
             log_behavior(
                 db,
-                event_type="dialogue_completed",
+                event_type="dialogue_finish_branch_selected",
                 participant=participant,
                 session=session,
-                stage="chat_completed",
-                metadata=progress,
+                stage=session.status,
+                metadata={**progress, "decision": decision},
             )
+        elif decision == "not_core":
+            session.dialogue_finish_decision = decision
+            session.dialogue_finish_decision_turn_count = int(progress["participant_turn_count"])
+            session.dialogue_continue_until_turn_count = DialogueService.MAX_PARTICIPANT_TURNS
+            session.status = "chat_in_progress"
+            log_behavior(
+                db,
+                event_type="dialogue_finish_branch_selected",
+                participant=participant,
+                session=session,
+                stage=session.status,
+                metadata={**progress, "decision": decision},
+            )
+        else:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown finish decision")
         db.commit()
         db.refresh(session)
 
@@ -868,6 +976,78 @@ class DialogueService:
             elif message.role == "assistant" and not message.error_code:
                 history.append({"role": "assistant", "content": message.content})
         return history
+
+    @staticmethod
+    def normalize_turn_content(content: str) -> str:
+        normalized = content.strip().lower()
+        normalized = re.sub(r"[\s，。！？、,.!?;；:：\"'“”‘’（）()【】\[\]…\-]+", "", normalized)
+        return normalized
+
+    @staticmethod
+    def is_effective_participant_turn(content: str) -> bool:
+        normalized = DialogueService.normalize_turn_content(content)
+        if not normalized:
+            return False
+        if normalized in DialogueService._NON_SUBSTANTIVE_TURNS:
+            return False
+        if len(normalized) <= 1:
+            return False
+        return bool(re.search(r"[\w\u4e00-\u9fff]", normalized))
+
+    @staticmethod
+    def _forced_finish_reason(session: ExperimentSession, participant_turns: int, elapsed: int) -> str | None:
+        if participant_turns >= DialogueService.MAX_PARTICIPANT_TURNS:
+            return "max_turns"
+        if elapsed >= DialogueService.MAX_ELAPSED_SECONDS:
+            return "max_duration"
+        if (
+            session.dialogue_finish_decision == "continue_related"
+            and session.dialogue_continue_until_turn_count is not None
+            and participant_turns >= session.dialogue_continue_until_turn_count
+        ):
+            return "continue_related_limit"
+        return None
+
+    @staticmethod
+    def _finish_prompt_visible(
+        session: ExperimentSession,
+        *,
+        participant_turns: int,
+        met_min_turns: bool,
+        met_min_duration: bool,
+        forced_finish_reason: str | None,
+    ) -> bool:
+        if forced_finish_reason is not None:
+            return True
+        if session.dialogue_finish_decision == "continue_related":
+            branch_start = session.dialogue_finish_decision_turn_count or participant_turns
+            return participant_turns >= branch_start + DialogueService.CONTINUE_RELATED_MIN_EXTRA_TURNS
+        if session.dialogue_finish_decision == "not_core":
+            return False
+        return met_min_turns and met_min_duration
+
+    @staticmethod
+    def _complete_dialogue(
+        db: Session,
+        *,
+        session: ExperimentSession,
+        participant: Participant,
+        metadata: dict[str, object],
+    ) -> None:
+        if session.status in {"chat_in_progress", "chat_eligible_to_finish"}:
+            if session.status == "chat_in_progress":
+                session.status = "chat_eligible_to_finish"
+            ExperimentSessionService.transition(db, session=session, next_status="chat_completed")
+            log_behavior(
+                db,
+                event_type="dialogue_completed",
+                participant=participant,
+                session=session,
+                stage="chat_completed",
+                metadata=metadata,
+            )
+        db.commit()
+        db.refresh(session)
 
 
 def to_session_response(participant: Participant, session: ExperimentSession) -> SessionResponse:

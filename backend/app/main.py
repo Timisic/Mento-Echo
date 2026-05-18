@@ -23,6 +23,7 @@ from app.schemas import (
     DialogueStateResponse,
     ExcludeSessionRequest,
     ExcludeSessionResponse,
+    FinishDialogueRequest,
     FinishDialogueResponse,
     ParticipantEntryRequest,
     ParticipantEntryResponse,
@@ -380,6 +381,15 @@ def _progress_response(progress: dict[str, object]) -> DialogueProgressResponse:
         eligible_to_finish=bool(progress["eligible_to_finish"]),
         required_participant_turns=DialogueService.MIN_PARTICIPANT_TURNS,
         required_elapsed_seconds=DialogueService.MIN_ELAPSED_SECONDS,
+        max_participant_turns=DialogueService.MAX_PARTICIPANT_TURNS,
+        max_elapsed_seconds=DialogueService.MAX_ELAPSED_SECONDS,
+        finish_prompt_visible=bool(progress["finish_prompt_visible"]),
+        forced_to_finish=bool(progress["forced_to_finish"]),
+        forced_finish_reason=progress["forced_finish_reason"],  # type: ignore[arg-type]
+        finish_decision=progress["finish_decision"],  # type: ignore[arg-type]
+        continue_until_turn_count=progress["continue_until_turn_count"],  # type: ignore[arg-type]
+        reminder_due=bool(progress["reminder_due"]),
+        reminder_text=str(progress["reminder_text"]),
     )
 
 
@@ -507,9 +517,14 @@ def send_dialogue_message(
 
 
 @app.post("/api/participant/sessions/{session_id}/dialogue/finish", response_model=FinishDialogueResponse)
-def finish_dialogue(session_id: str, db: Session = Depends(get_session)) -> FinishDialogueResponse:
+def finish_dialogue(
+    session_id: str,
+    payload: FinishDialogueRequest | None = None,
+    db: Session = Depends(get_session),
+) -> FinishDialogueResponse:
     session, participant = _get_session_and_participant(db, session_id)
-    DialogueService.finish(db, session=session, participant=participant)
+    decision = payload.decision if payload else "can_end"
+    DialogueService.finish(db, session=session, participant=participant, decision=decision)
     progress = DialogueService.update_progress(db, session=session)
     db.commit()
     return FinishDialogueResponse(status=session.status, progress=_progress_response(progress))

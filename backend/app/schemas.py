@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 ExperimentGroup = Literal["experiment", "control"]
 AssignmentSource = Literal["imported", "randomized"]
+DialogueFinishDecision = Literal["can_end", "continue_related", "not_core", "early_stop"]
 SessionStatus = Literal[
     "not_started",
     "pre_survey_submitted",
@@ -255,6 +256,15 @@ class DialogueProgressResponse(BaseModel):
     eligible_to_finish: bool
     required_participant_turns: int
     required_elapsed_seconds: int
+    max_participant_turns: int
+    max_elapsed_seconds: int
+    finish_prompt_visible: bool
+    forced_to_finish: bool
+    forced_finish_reason: str | None
+    finish_decision: str | None
+    continue_until_turn_count: int | None
+    reminder_due: bool
+    reminder_text: str
 
 
 class DialogueStateResponse(BaseModel):
@@ -276,6 +286,10 @@ class SendMessageResponse(BaseModel):
     assistant_message: ChatMessageResponse
     progress: DialogueProgressResponse
     status: SessionStatus
+
+
+class FinishDialogueRequest(BaseModel):
+    decision: DialogueFinishDecision = "can_end"
 
 
 class FinishDialogueResponse(BaseModel):

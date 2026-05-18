@@ -1,6 +1,7 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   AdminStatusRow,
+  DialogueFinishDecision,
   DialogueState,
   ParticipantSession,
   QuestionnaireDefinition,
@@ -292,15 +293,21 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
     }
   }
 
-  async function handleFinishDialogue() {
+  async function handleFinishDialogue(decision: DialogueFinishDecision) {
     if (!session) return;
     setBusy(true);
     setError('');
     try {
-      const result = await finishDialogue(session.experiment_session_id);
+      const result = await finishDialogue(session.experiment_session_id, decision);
       setSession({ ...session, status: result.status });
-      setStep('post-guide');
-      setStatusMessage('你已完成 AI 对话，下面将进入后测问卷。');
+      if (result.status === 'chat_completed') {
+        setStep('post-guide');
+        setStatusMessage('你已完成 AI 对话，下面将进入后测问卷。');
+      } else {
+        const state = await fetchDialogue(session.experiment_session_id);
+        setDialogue(state);
+        setStatusMessage('已记录你的选择，可以继续围绕相关点展开。');
+      }
     } catch (finishError) {
       setError(userFacingError(finishError));
     } finally {
@@ -371,8 +378,8 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
               <p>请围绕“我现在这个专业真的是我想继续读下去的吗？以后升学或就业，我还要不要继续走这个方向？”这类问题展开思考与表达。</p>
               <p>有效完成对话需要同时满足：</p>
               <ul>
-                <li>至少发送 10 条消息</li>
-                <li>对话时间至少 15 分钟</li>
+                <li>至少 6 个有效用户回合</li>
+                <li>对话时间至少 10 分钟</li>
               </ul>
               <p>达到条件后，系统会开放“结束对话并进入后测”按钮。</p>
             </>
@@ -910,7 +917,7 @@ function DialoguePage({
   assistantThinking: boolean;
   onInput: (value: string) => void;
   onSend: (event: FormEvent<HTMLFormElement>) => void;
-  onFinish: () => void;
+  onFinish: (decision: DialogueFinishDecision) => void;
   onBack: () => void;
 }) {
   const progress = dialogue.progress;
@@ -926,6 +933,17 @@ function DialoguePage({
 
   const elapsed = formatDuration(elapsedSeconds);
   const required = formatDuration(progress.required_elapsed_seconds);
+  const maximum = formatDuration(progress.max_elapsed_seconds);
+  const showInitialFinishPrompt = progress.finish_prompt_visible && progress.finish_decision !== 'continue_related';
+  const showContinueRelatedFinish = progress.finish_prompt_visible && progress.finish_decision === 'continue_related';
+  const forceReasonText =
+    progress.forced_finish_reason === 'max_turns'
+      ? '已达到 12 个有效用户回合上限。'
+      : progress.forced_finish_reason === 'max_duration'
+        ? '已达到 20 分钟对话上限。'
+        : progress.forced_finish_reason === 'continue_related_limit'
+          ? '相关点延伸讨论已达到本分支上限。'
+          : '对话已达到结束条件。';
   const visibleMessages = pendingUserMessage
     ? [
         ...dialogue.messages,
@@ -948,6 +966,10 @@ function DialoguePage({
           返回首页
         </button>
       </div>
+      <div className="topic-banner" role="note">
+        当前对话主题：专业选择与未来升学/就业方向
+      </div>
+      {progress.reminder_due ? <div className="topic-reminder">{progress.reminder_text}</div> : null}
       <div className="dialogue-shell">
         <div className="chat-panel">
           <div className="chat-window" aria-live="polite">
@@ -988,12 +1010,48 @@ function DialoguePage({
         <aside className="dialogue-sidebar" aria-label="对话完成信息">
           <div className="dialogue-progress">
             <h3>完成要求</h3>
-            <p>消息数：{Math.min(progress.participant_turn_count, progress.required_participant_turns)} / {progress.required_participant_turns}</p>
+            <p>
+              消息数：{Math.min(progress.participant_turn_count, progress.required_participant_turns)} /{' '}
+              {progress.required_participant_turns}
+            </p>
             <p>对话时长：{elapsed} / {required}</p>
+            <p>上限：{progress.max_participant_turns} 个有效回合或 {maximum}</p>
             <p>{progress.eligible_to_finish ? '已达到完成条件' : '尚未达到完成条件'}</p>
           </div>
-          <button type="button" className="primary-action" disabled={!progress.eligible_to_finish || busy} onClick={onFinish}>
-            {progress.eligible_to_finish ? '结束对话并进入后测' : '暂不能进入后测'}
+          {progress.forced_to_finish ? (
+            <div className="finish-choices" role="group" aria-label="强制结束">
+              <p>{forceReasonText}</p>
+              <button type="button" className="primary-action" disabled={busy} onClick={() => onFinish('can_end')}>
+                结束对话并进入后测
+              </button>
+            </div>
+          ) : showContinueRelatedFinish ? (
+            <div className="finish-choices" role="group" aria-label="相关点讨论结束确认">
+              <p>这个相关点已经继续讨论了一段时间。你现在是否可以结束本次对话？</p>
+              <button type="button" className="primary-action" disabled={busy} onClick={() => onFinish('can_end')}>
+                A 可以结束
+              </button>
+            </div>
+          ) : showInitialFinishPrompt ? (
+            <div className="finish-choices" role="group" aria-label="结束确认">
+              <p>你现在是否觉得这次对话已经足够帮助你梳理当前问题？</p>
+              <button type="button" className="primary-action" disabled={busy} onClick={() => onFinish('can_end')}>
+                A 可以结束
+              </button>
+              <button type="button" disabled={busy} onClick={() => onFinish('continue_related')}>
+                B 还想继续讨论一个相关点
+              </button>
+              <button type="button" disabled={busy} onClick={() => onFinish('not_core')}>
+                C 还没有聊到核心问题
+              </button>
+            </div>
+          ) : (
+            <button type="button" className="primary-action" disabled>
+              暂不能进入后测
+            </button>
+          )}
+          <button type="button" className="secondary-action" disabled={busy} onClick={() => onFinish('early_stop')}>
+            我不想继续，提前结束
           </button>
         </aside>
       </div>
