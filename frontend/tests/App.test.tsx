@@ -115,7 +115,7 @@ const dialogueState = {
   experiment_session_id: 'session-1',
   participant_code: 'PILOT001',
   group: 'experiment',
-  system_prompt_version: 'experiment_identity_dialogue_v1',
+  system_prompt_version: 'major_choice_dialogue_protocol_v2',
   status: 'chat_in_progress',
   progress: {
     participant_turn_count: 3,
@@ -123,8 +123,17 @@ const dialogueState = {
     met_min_turns: false,
     met_min_duration: false,
     eligible_to_finish: false,
-    required_participant_turns: 10,
-    required_elapsed_seconds: 900
+    required_participant_turns: 6,
+    required_elapsed_seconds: 600,
+    max_participant_turns: 12,
+    max_elapsed_seconds: 1200,
+    finish_prompt_visible: false,
+    forced_to_finish: false,
+    forced_finish_reason: null,
+    finish_decision: null,
+    continue_until_turn_count: null,
+    reminder_due: true,
+    reminder_text: '请确认接下来的提问仍围绕专业选择、未来方向、升学或就业展开。'
   },
   messages: [
     {
@@ -134,7 +143,7 @@ const dialogueState = {
       content: '**你好**，请从你愿意分享的内容开始。',
       provider_name: 'mock',
       model_name: 'mock-model',
-      system_prompt_version: 'experiment_identity_dialogue_v1',
+      system_prompt_version: 'major_choice_dialogue_protocol_v2',
       generation_params: null,
       duration_ms: 12,
       retry_count: 0,
@@ -287,11 +296,13 @@ describe('Mentor Echo 前端试点 UI', () => {
     fireEvent.click(screen.getByRole('button', { name: '开始 AI 对话' }));
 
     expect(await screen.findByRole('heading', { name: '围绕专业与未来方向展开对话' })).toBeInTheDocument();
-    expect(screen.getByText('消息数：3 / 10')).toBeInTheDocument();
-    expect(screen.getByText('对话时长：04:21 / 15:00')).toBeInTheDocument();
+    expect(screen.getByText('当前对话主题：专业选择与未来升学/就业方向')).toBeInTheDocument();
+    expect(screen.getByText('请确认接下来的提问仍围绕专业选择、未来方向、升学或就业展开。')).toBeInTheDocument();
+    expect(screen.getByText('消息数：3 / 6')).toBeInTheDocument();
+    expect(screen.getByText('对话时长：04:21 / 10:00')).toBeInTheDocument();
     expect(screen.getByText('尚未达到完成条件')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '暂不能进入后测' })).toBeDisabled();
-    expect(screen.queryByText('experiment_identity_dialogue_v1')).not.toBeInTheDocument();
+    expect(screen.queryByText('major_choice_dialogue_protocol_v2')).not.toBeInTheDocument();
     expect(screen.queryByText('mock-model')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('对话内容'), { target: { value: '我在想是否继续读当前专业。' } });

@@ -27,6 +27,10 @@ def prepared_session(client, admin_headers, code="DIALOGUE", group="experiment")
 
 
 def test_ai_provider_boundary_mock_and_missing_key_behavior():
+    experiment_prompt = prompt_for_group("experiment").system_prompt
+    assert "Never reveal" in experiment_prompt
+    assert "internal rules" in experiment_prompt
+
     mock = OpenAICompatibleProvider(Settings(AI_PROVIDER_NAME="mock", AI_MODEL_NAME="mock-model"))
     result = mock.generate(system_prompt="system", messages=[{"role": "user", "content": "hello"}])
     assert result.provider_name == "mock"
@@ -77,7 +81,7 @@ def test_prompt_selection_message_persistence_and_metadata(client, admin_headers
     assert body["assistant_message"]["role"] == "assistant"
     assert body["assistant_message"]["provider_name"] == "mock"
     assert body["assistant_message"]["model_name"] == "mock-mentor-echo"
-    assert body["assistant_message"]["system_prompt_version"] == "experiment_identity_dialogue_v1"
+    assert body["assistant_message"]["system_prompt_version"] == "major_choice_dialogue_protocol_v2"
     assert body["progress"]["participant_turn_count"] == 1
     assert "api_key" not in str(body).lower()
 
@@ -86,7 +90,7 @@ def test_prompt_selection_message_persistence_and_metadata(client, admin_headers
     assert messages[1].generation_params["temperature"] == 0.3
 
 
-def test_completion_eligibility_requires_10_participant_turns_and_15_minutes(client, admin_headers, db_session):
+def test_completion_eligibility_requires_6_effective_turns_and_10_minutes(client, admin_headers, db_session):
     session_id = prepared_session(client, admin_headers, code="DELIG", group="control")
     assert client.get(f"/api/participant/sessions/{session_id}/dialogue").status_code == 200
     session = db_session.get(ExperimentSession, session_id)
@@ -94,7 +98,14 @@ def test_completion_eligibility_requires_10_participant_turns_and_15_minutes(cli
     session.chat_started_at = session.chat_started_at - timedelta(seconds=DialogueService.MIN_ELAPSED_SECONDS + 5)
     db_session.commit()
 
-    for i in range(9):
+    filler = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": "嗯"},
+    )
+    assert filler.status_code == 200, filler.text
+    assert filler.json()["progress"]["participant_turn_count"] == 0
+
+    for i in range(5):
         response = client.post(
             f"/api/participant/sessions/{session_id}/dialogue/messages",
             json={"content": f"light topic message {i}"},
@@ -105,17 +116,115 @@ def test_completion_eligibility_requires_10_participant_turns_and_15_minutes(cli
     finish_early = client.post(f"/api/participant/sessions/{session_id}/dialogue/finish")
     assert finish_early.status_code == 409
 
-    tenth = client.post(
+    sixth = client.post(
         f"/api/participant/sessions/{session_id}/dialogue/messages",
-        json={"content": "light topic message 10"},
+        json={"content": "light topic message 6"},
     )
-    assert tenth.status_code == 200
-    assert tenth.json()["progress"]["eligible_to_finish"] is True
-    assert tenth.json()["status"] == "chat_eligible_to_finish"
+    assert sixth.status_code == 200
+    assert sixth.json()["progress"]["eligible_to_finish"] is True
+    assert sixth.json()["progress"]["finish_prompt_visible"] is True
+    assert sixth.json()["status"] == "chat_eligible_to_finish"
 
-    finish = client.post(f"/api/participant/sessions/{session_id}/dialogue/finish")
+    finish = client.post(f"/api/participant/sessions/{session_id}/dialogue/finish", json={"decision": "can_end"})
     assert finish.status_code == 200
     assert finish.json()["status"] == "chat_completed"
+
+
+def test_finish_branches_and_forced_limits(client, admin_headers, db_session):
+    session_id = prepared_session(client, admin_headers, code="DBRANCH", group="experiment")
+    assert client.get(f"/api/participant/sessions/{session_id}/dialogue").status_code == 200
+    session = db_session.get(ExperimentSession, session_id)
+    assert session is not None
+    session.chat_started_at = session.chat_started_at - timedelta(seconds=DialogueService.MIN_ELAPSED_SECONDS + 5)
+    db_session.commit()
+
+    for i in range(6):
+        response = client.post(
+            f"/api/participant/sessions/{session_id}/dialogue/messages",
+            json={"content": f"我对当前专业和未来方向的想法 {i}"},
+        )
+        assert response.status_code == 200, response.text
+    branch = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/finish",
+        json={"decision": "continue_related"},
+    )
+    assert branch.status_code == 200, branch.text
+    assert branch.json()["status"] == "chat_in_progress"
+    assert branch.json()["progress"]["finish_decision"] == "continue_related"
+
+    one_more = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": "我还想补充一个和就业方向相关的考虑。"},
+    )
+    assert one_more.status_code == 200
+    assert one_more.json()["progress"]["finish_prompt_visible"] is False
+    two_more = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": "我也在比较继续读研和直接就业的风险。"},
+    )
+    assert two_more.status_code == 200
+    assert two_more.json()["progress"]["finish_prompt_visible"] is True
+
+    finish = client.post(f"/api/participant/sessions/{session_id}/dialogue/finish", json={"decision": "can_end"})
+    assert finish.status_code == 200
+    assert finish.json()["status"] == "chat_completed"
+
+    c_session_id = prepared_session(client, admin_headers, code="DCORE", group="experiment")
+    assert client.get(f"/api/participant/sessions/{c_session_id}/dialogue").status_code == 200
+    c_session = db_session.get(ExperimentSession, c_session_id)
+    assert c_session is not None
+    c_session.chat_started_at = c_session.chat_started_at - timedelta(seconds=DialogueService.MIN_ELAPSED_SECONDS + 5)
+    db_session.commit()
+    for i in range(6):
+        response = client.post(
+            f"/api/participant/sessions/{c_session_id}/dialogue/messages",
+            json={"content": f"我还没有谈到核心专业选择问题 {i}"},
+        )
+        assert response.status_code == 200, response.text
+    not_core = client.post(
+        f"/api/participant/sessions/{c_session_id}/dialogue/finish",
+        json={"decision": "not_core"},
+    )
+    assert not_core.status_code == 200
+    assert not_core.json()["status"] == "chat_in_progress"
+    assert not_core.json()["progress"]["finish_decision"] == "not_core"
+    assert not_core.json()["progress"]["finish_prompt_visible"] is False
+
+
+def test_early_stop_and_max_turn_force_finish(client, admin_headers, db_session):
+    early_session_id = prepared_session(client, admin_headers, code="DEARLY", group="experiment")
+    assert client.get(f"/api/participant/sessions/{early_session_id}/dialogue").status_code == 200
+    early = client.post(
+        f"/api/participant/sessions/{early_session_id}/dialogue/finish",
+        json={"decision": "early_stop"},
+    )
+    assert early.status_code == 200
+    assert early.json()["status"] == "chat_completed"
+
+    forced_session_id = prepared_session(client, admin_headers, code="DFORCE", group="experiment")
+    assert client.get(f"/api/participant/sessions/{forced_session_id}/dialogue").status_code == 200
+    for i in range(DialogueService.MAX_PARTICIPANT_TURNS):
+        response = client.post(
+            f"/api/participant/sessions/{forced_session_id}/dialogue/messages",
+            json={"content": f"关于专业选择和未来方向的第 {i} 个具体想法。"},
+        )
+        assert response.status_code == 200, response.text
+    state = client.get(f"/api/participant/sessions/{forced_session_id}/dialogue").json()
+    assert state["progress"]["forced_to_finish"] is True
+    assert state["progress"]["forced_finish_reason"] == "max_turns"
+    blocked = client.post(
+        f"/api/participant/sessions/{forced_session_id}/dialogue/messages",
+        json={"content": "我还想继续绕过上限。"},
+    )
+    assert blocked.status_code == 409
+    finish = client.post(f"/api/participant/sessions/{forced_session_id}/dialogue/finish", json={"decision": "can_end"})
+    assert finish.status_code == 200
+    assert finish.json()["status"] == "chat_completed"
+    completed_send = client.post(
+        f"/api/participant/sessions/{forced_session_id}/dialogue/messages",
+        json={"content": "完成后不应继续发送。"},
+    )
+    assert completed_send.status_code == 409
 
 
 def test_full_participant_path_pre_dialogue_post_completed(client, admin_headers, db_session):

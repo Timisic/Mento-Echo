@@ -87,6 +87,15 @@ export type DialogueState = {
     eligible_to_finish: boolean;
     required_participant_turns: number;
     required_elapsed_seconds: number;
+    max_participant_turns: number;
+    max_elapsed_seconds: number;
+    finish_prompt_visible: boolean;
+    forced_to_finish: boolean;
+    forced_finish_reason: string | null;
+    finish_decision: string | null;
+    continue_until_turn_count: number | null;
+    reminder_due: boolean;
+    reminder_text: string;
   };
   messages: Array<{
     id: string;
@@ -232,6 +241,14 @@ export function sendDialogueMessage(
   });
 }
 
-export function finishDialogue(sessionId: string): Promise<{ status: string; progress: DialogueState['progress'] }> {
-  return request(`/api/participant/sessions/${sessionId}/dialogue/finish`, { method: 'POST' });
+export type DialogueFinishDecision = 'can_end' | 'continue_related' | 'not_core' | 'early_stop';
+
+export function finishDialogue(
+  sessionId: string,
+  decision: DialogueFinishDecision
+): Promise<{ status: string; progress: DialogueState['progress'] }> {
+  return request(`/api/participant/sessions/${sessionId}/dialogue/finish`, {
+    method: 'POST',
+    body: JSON.stringify({ decision })
+  });
 }
