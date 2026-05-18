@@ -316,17 +316,21 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
     setDirtyPhase(phase);
   }
 
+  const isDialogueStep = step === 'dialogue';
+
   return (
-    <section className="flow" aria-labelledby="participant-title">
-      <FlowHeader
-        eyebrow="被试端"
-        title="AI 对话实验"
-        description="请使用研究者提供的被试编号完成当前阶段。"
-        onBack={onBack}
-      />
+    <section className={isDialogueStep ? 'flow dialogue-flow' : 'flow'} aria-labelledby={isDialogueStep ? 'dialogue-heading' : 'participant-title'}>
+      {!isDialogueStep ? (
+        <FlowHeader
+          eyebrow="被试端"
+          title="AI 对话实验"
+          description="请使用研究者提供的被试编号完成当前阶段。"
+          onBack={onBack}
+        />
+      ) : null}
       {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
       {statusMessage ? <StatusNotice tone="success">{statusMessage}</StatusNotice> : null}
-      {busy ? <StatusNotice tone="loading">正在处理，请稍候。</StatusNotice> : null}
+      {busy && !isDialogueStep ? <StatusNotice tone="loading">正在处理，请稍候。</StatusNotice> : null}
 
       {step === 'entry' ? <ParticipantEntry onSubmit={handleEntry} busy={busy} /> : null}
       {step === 'welcome' ? (
@@ -388,6 +392,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
           onInput={setDialogueInput}
           onSend={handleSendDialogueMessage}
           onFinish={handleFinishDialogue}
+          onBack={onBack}
         />
       ) : null}
       {step === 'post-guide' ? (
@@ -890,7 +895,8 @@ function DialoguePage({
   assistantThinking,
   onInput,
   onSend,
-  onFinish
+  onFinish,
+  onBack
 }: {
   dialogue: DialogueState;
   input: string;
@@ -900,6 +906,7 @@ function DialoguePage({
   onInput: (value: string) => void;
   onSend: (event: FormEvent<HTMLFormElement>) => void;
   onFinish: () => void;
+  onBack: () => void;
 }) {
   const progress = dialogue.progress;
   const [elapsedSeconds, setElapsedSeconds] = useState(progress.dialogue_elapsed_seconds);
@@ -932,6 +939,9 @@ function DialoguePage({
           <h2 id="dialogue-heading">围绕专业与未来方向展开对话</h2>
           <p>可以从你是否想继续读当前专业、未来升学或就业是否还走这个方向开始。</p>
         </div>
+        <button type="button" className="text-action" onClick={onBack}>
+          返回首页
+        </button>
       </div>
       <div className="dialogue-shell">
         <div className="chat-panel">
@@ -989,49 +999,148 @@ function DialoguePage({
 function MarkdownContent({ text }: { text: string }) {
   const lines = text.split(/\r?\n/);
   const nodes: ReactNode[] = [];
-  let bullets: string[] = [];
+  let unorderedItems: string[] = [];
+  let orderedItems: string[] = [];
+  let paragraph: string[] = [];
+  let codeLines: string[] = [];
+  let inCodeBlock = false;
 
-  function flushBullets() {
-    if (bullets.length === 0) return;
+  function flushParagraph() {
+    if (paragraph.length === 0) return;
+    nodes.push(<p key={`p-${nodes.length}`}>{parseInlineMarkdown(paragraph.join(' '))}</p>);
+    paragraph = [];
+  }
+
+  function flushUnorderedItems() {
+    if (unorderedItems.length === 0) return;
     nodes.push(
       <ul key={`list-${nodes.length}`}>
-        {bullets.map((line, index) => (
+        {unorderedItems.map((line, index) => (
           <li key={`${line}-${index}`}>{parseInlineMarkdown(line)}</li>
         ))}
       </ul>
     );
-    bullets = [];
+    unorderedItems = [];
+  }
+
+  function flushOrderedItems() {
+    if (orderedItems.length === 0) return;
+    nodes.push(
+      <ol key={`ordered-${nodes.length}`}>
+        {orderedItems.map((line, index) => (
+          <li key={`${line}-${index}`}>{parseInlineMarkdown(line)}</li>
+        ))}
+      </ol>
+    );
+    orderedItems = [];
+  }
+
+  function flushLists() {
+    flushUnorderedItems();
+    flushOrderedItems();
   }
 
   lines.forEach((line, index) => {
     const trimmed = line.trim();
+    if (trimmed.startsWith('```')) {
+      flushParagraph();
+      flushLists();
+      if (inCodeBlock) {
+        nodes.push(
+          <pre key={`code-${nodes.length}`}>
+            <code>{codeLines.join('\n')}</code>
+          </pre>
+        );
+        codeLines = [];
+        inCodeBlock = false;
+      } else {
+        inCodeBlock = true;
+        codeLines = [];
+      }
+      return;
+    }
+    if (inCodeBlock) {
+      codeLines.push(line);
+      return;
+    }
     if (!trimmed) {
-      flushBullets();
+      flushParagraph();
+      flushLists();
       return;
     }
     if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-      bullets.push(trimmed.slice(2));
+      flushParagraph();
+      flushOrderedItems();
+      unorderedItems.push(trimmed.slice(2));
       return;
     }
-    flushBullets();
-    nodes.push(<p key={`p-${index}`}>{parseInlineMarkdown(trimmed.replace(/^#{1,3}\s*/, ''))}</p>);
+    const orderedMatch = trimmed.match(/^\d+[.)]\s+(.+)$/);
+    if (orderedMatch) {
+      flushParagraph();
+      flushUnorderedItems();
+      orderedItems.push(orderedMatch[1]);
+      return;
+    }
+    flushLists();
+    if (/^#{1,3}\s+/.test(trimmed)) {
+      flushParagraph();
+      nodes.push(<h3 key={`heading-${index}`}>{parseInlineMarkdown(trimmed.replace(/^#{1,3}\s+/, ''))}</h3>);
+      return;
+    }
+    paragraph.push(trimmed);
   });
-  flushBullets();
+  if (inCodeBlock) {
+    nodes.push(
+      <pre key={`code-${nodes.length}`}>
+        <code>{codeLines.join('\n')}</code>
+      </pre>
+    );
+  }
+  flushParagraph();
+  flushLists();
 
   return <div className="markdown-content">{nodes}</div>;
 }
 
 function parseInlineMarkdown(text: string): ReactNode[] {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).filter(Boolean);
-  return parts.map((part, index) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={index}>{part.slice(2, -2)}</strong>;
+  const nodes: ReactNode[] = [];
+  const tokenPattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\([^) \n]+\))/g;
+  let lastIndex = 0;
+  for (const match of text.matchAll(tokenPattern)) {
+    if (match.index === undefined) continue;
+    if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
+    const token = match[0];
+    const key = nodes.length;
+    if (token.startsWith('`') && token.endsWith('`')) {
+      nodes.push(<code key={key}>{token.slice(1, -1)}</code>);
+    } else if (token.startsWith('**') && token.endsWith('**')) {
+      nodes.push(<strong key={key}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith('*') && token.endsWith('*')) {
+      nodes.push(<em key={key}>{token.slice(1, -1)}</em>);
+    } else {
+      const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      const href = linkMatch ? safeMarkdownHref(linkMatch[2]) : null;
+      if (linkMatch && href) {
+        nodes.push(
+          <a key={key} href={href} target="_blank" rel="noreferrer">
+            {linkMatch[1]}
+          </a>
+        );
+      } else {
+        nodes.push(token);
+      }
     }
-    if (part.startsWith('`') && part.endsWith('`')) {
-      return <code key={index}>{part.slice(1, -1)}</code>;
-    }
-    return part;
-  });
+    lastIndex = match.index + token.length;
+  }
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return nodes;
+}
+
+function safeMarkdownHref(href: string): string | null {
+  const trimmed = href.trim();
+  if (/^(https?:\/\/|mailto:)/i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('/') || trimmed.startsWith('#')) return trimmed;
+  return null;
 }
 
 function CompletionPage() {
