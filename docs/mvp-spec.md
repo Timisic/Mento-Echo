@@ -104,7 +104,7 @@ Default groups:
 
 - Dialogue starts after pre-survey submission. In `pilot_single` mode no participant-visible grouping step is required.
 - Participant instructions must state that valid completion requires at least 10 participant messages and at least 15 minutes.
-- The system tracks participant turn count and elapsed time from dialogue start.
+- The system tracks participant turn count and active dialogue time; closed-page/offline gaps do not keep increasing the timer.
 - The “finish dialogue / enter post-survey” action is disabled until both thresholds are met.
 - The AI may provide a summary or closing guidance near the end, but completion eligibility is determined by the platform, not by the AI.
 

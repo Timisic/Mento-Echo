@@ -310,6 +310,8 @@ describe('Mentor Echo 前端 UI', () => {
     fireEvent.click(screen.getByRole('button', { name: '提交前测' }));
 
     expect(await screen.findByRole('heading', { name: 'AI 对话说明' })).toBeInTheDocument();
+    expect(screen.getByText('至少 10 个有效用户回合')).toBeInTheDocument();
+    expect(screen.getByText('对话时间至少 15 分钟')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '开始 AI 对话' }));
 
     expect(await screen.findByRole('heading', { name: '围绕专业与未来方向展开对话' })).toBeInTheDocument();
@@ -319,6 +321,8 @@ describe('Mentor Echo 前端 UI', () => {
     expect(screen.queryByText('请确认接下来的提问仍围绕专业选择、未来方向、升学或就业展开。')).not.toBeInTheDocument();
     expect(screen.getByText('消息数：3 / 10')).toBeInTheDocument();
     expect(screen.getByText('对话时长：04:21 / 15:00')).toBeInTheDocument();
+    expect(screen.getByText('60 分钟后页面会提示可以休息退出；后端不会因时间到达而强制结束。')).toBeInTheDocument();
+    expect(screen.queryByText(/上限：.*60:00/)).not.toBeInTheDocument();
     expect(screen.getByText('尚未达到完成条件')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '暂不能进入后测' })).toBeDisabled();
     expect(screen.queryByText('major_choice_dialogue_protocol_v2')).not.toBeInTheDocument();
@@ -374,6 +378,14 @@ describe('Mentor Echo 前端 UI', () => {
     expect(await screen.findByText('请继续围绕专业选择与未来方向交流。')).toBeInTheDocument();
     expect(container.querySelector('.chat-panel > .topic-reminder')).not.toBeNull();
     expect(container.querySelector('.dialogue-layout > .topic-reminder')).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(30000);
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/api/participant/sessions/session-1/dialogue`, expect.any(Object));
+    });
 
     act(() => {
       vi.advanceTimersByTime(4600);

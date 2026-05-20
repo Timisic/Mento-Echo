@@ -5,10 +5,8 @@ import io
 import json
 import re
 import zipfile
-from datetime import timedelta
-
 from app.models import AuditLog, BehaviorEvent, ExperimentSession
-from app.services import DialogueService
+from app.services import DialogueService, now_utc
 from tests.conftest import import_participants
 from tests.test_questionnaire_flow import responses_for_phase
 
@@ -54,9 +52,8 @@ def _complete_pilot_flow(client, admin_headers, db_session, code: str = "PILOT01
     assert state.status_code == 200, state.text
     session = db_session.get(ExperimentSession, session_id)
     assert session is not None and session.chat_started_at is not None
-    session.chat_started_at = session.chat_started_at - timedelta(
-        seconds=DialogueService.MIN_ELAPSED_SECONDS + 10
-    )
+    session.dialogue_elapsed_seconds = DialogueService.MIN_ELAPSED_SECONDS + 10
+    session.last_seen_at = now_utc()
     db_session.commit()
 
     for index in range(10):
@@ -177,7 +174,7 @@ def test_export_package_structure_content_and_privacy_boundaries(client, admin_h
 
         readme = archive.read(_member(names, "README.md")).decode("utf-8")
         assert "SENSITIVE RAW CHAT" in readme
-        assert "10 participant turns + 15 minutes" in readme
+        assert "10 participant turns + 15 active dialogue minutes" in readme
         assert "mock-mentor-echo" in readme
 
         manifest = json.loads(archive.read(_member(names, "export_manifest.json")))

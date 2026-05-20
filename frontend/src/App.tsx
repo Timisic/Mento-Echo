@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AdminStatusRow,
   DialogueFinishDecision,
@@ -332,6 +332,17 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
     }
   }
 
+  const handleRefreshDialogue = useCallback(async () => {
+    if (!session || step !== 'dialogue') return;
+    try {
+      const state = await fetchDialogue(session.experiment_session_id);
+      setDialogue(state);
+      setSession((current) => (current ? { ...current, status: state.status } : current));
+    } catch {
+      // A heartbeat failure should not interrupt an active participant turn.
+    }
+  }, [session, step]);
+
   function updateResponse(phase: Phase, itemKey: string, value: string | number) {
     setResponses((current) => ({
       ...current,
@@ -395,8 +406,8 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
               <p>请围绕“我现在这个专业真的是我想继续读下去的吗？以后升学或就业，我还要不要继续走这个方向？”这类问题展开思考与表达。</p>
               <p>有效完成对话需要同时满足：</p>
               <ul>
-                <li>至少 6 个有效用户回合</li>
-                <li>对话时间至少 10 分钟</li>
+                <li>至少 10 个有效用户回合</li>
+                <li>对话时间至少 15 分钟</li>
               </ul>
               <p>达到条件后，系统会开放“结束对话并进入后测”按钮。</p>
             </>
@@ -416,6 +427,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
           onInput={setDialogueInput}
           onSend={handleSendDialogueMessage}
           onFinish={handleFinishDialogue}
+          onRefresh={handleRefreshDialogue}
           onBack={onBack}
         />
       ) : null}
@@ -937,6 +949,7 @@ function DialoguePage({
   onInput,
   onSend,
   onFinish,
+  onRefresh,
   onBack
 }: {
   dialogue: DialogueState;
@@ -947,6 +960,7 @@ function DialoguePage({
   onInput: (value: string) => void;
   onSend: (event: FormEvent<HTMLFormElement>) => void;
   onFinish: (decision: DialogueFinishDecision) => void;
+  onRefresh: () => void;
   onBack: () => void;
 }) {
   const progress = dialogue.progress;
@@ -961,6 +975,13 @@ function DialoguePage({
     }, 1000);
     return () => window.clearInterval(timer);
   }, [progress.dialogue_elapsed_seconds]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      onRefresh();
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [onRefresh]);
 
   const reminderKey = useMemo(() => {
     if (!progress.reminder_due) return null;
@@ -995,11 +1016,9 @@ function DialoguePage({
   const forceReasonText =
     progress.forced_finish_reason === 'max_turns'
       ? '已达到 12 个有效用户回合上限。'
-      : progress.forced_finish_reason === 'max_duration'
-        ? `已达到 ${maximum} 对话上限。`
-        : progress.forced_finish_reason === 'continue_related_limit'
-          ? '相关点延伸讨论已达到本分支上限。'
-          : '对话已达到结束条件。';
+      : progress.forced_finish_reason === 'continue_related_limit'
+        ? '相关点延伸讨论已达到本分支上限。'
+        : '对话已达到结束条件。';
   const visibleMessages = pendingUserMessage
     ? [
         ...dialogue.messages,
@@ -1072,7 +1091,9 @@ function DialoguePage({
               {progress.required_participant_turns}
             </p>
             <p>对话时长：{elapsed} / {required}</p>
-            <p>上限：{progress.max_participant_turns} 个有效回合或 {maximum}</p>
+            <p>回合上限：{progress.max_participant_turns} 个有效回合</p>
+            <p>60 分钟后页面会提示可以休息退出；后端不会因时间到达而强制结束。</p>
+            {elapsedSeconds >= progress.max_elapsed_seconds ? <p>已超过 {maximum}，如感到疲劳可以结束或联系研究者。</p> : null}
             <p>{progress.eligible_to_finish ? '已达到完成条件' : '尚未达到完成条件'}</p>
           </div>
           {progress.forced_to_finish ? (

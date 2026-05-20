@@ -449,7 +449,7 @@ must not become a competing source of truth.
 - Prompt mode: `{PROMPTLESS_DIALOGUE_MODE}`
 - Response SLA: `{settings.ai_response_sla_seconds}` seconds
 - Fallback provider: `{settings.ai_fallback_provider_name}` when enabled and available
-- Completion rule: 10 participant turns + 15 minutes
+- Completion rule: 10 participant turns + 15 active dialogue minutes
 - Group assignment: imported assignment wins; blank imports randomize once and then lock
 
 ## Files

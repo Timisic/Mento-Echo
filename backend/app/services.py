@@ -60,9 +60,19 @@ def now_utc() -> datetime:
 
 
 def elapsed_seconds_since(timestamp: datetime) -> int:
+    return elapsed_seconds_between(timestamp, now_utc())
+
+
+def elapsed_seconds_between(start: datetime, end: datetime) -> int:
+    start = as_utc(start)
+    end = as_utc(end)
+    return max(0, int((end - start).total_seconds()))
+
+
+def as_utc(timestamp: datetime) -> datetime:
     if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=UTC)
-    return max(0, int((now_utc() - timestamp).total_seconds()))
+        return timestamp.replace(tzinfo=UTC)
+    return timestamp.astimezone(UTC)
 
 
 def normalize_participant_code(raw: str) -> str:
@@ -732,6 +742,7 @@ class DialogueService:
     MIN_ELAPSED_SECONDS = 15 * 60
     MAX_PARTICIPANT_TURNS = 12
     MAX_ELAPSED_SECONDS = 60 * 60
+    ACTIVE_ELAPSED_MAX_GAP_SECONDS = 45
     CONTINUE_RELATED_MIN_EXTRA_TURNS = 2
     CONTINUE_RELATED_MAX_EXTRA_TURNS = 4
     REMINDER_TURN_INTERVAL = 4
@@ -944,9 +955,7 @@ class DialogueService:
         participant_turns = sum(
             1 for message in participant_messages if DialogueService.is_effective_participant_turn(message.content)
         )
-        elapsed = 0
-        if session.chat_started_at is not None:
-            elapsed = elapsed_seconds_since(session.chat_started_at)
+        elapsed = DialogueService._active_elapsed_seconds(session)
         session.participant_turn_count = int(participant_turns)
         session.dialogue_elapsed_seconds = elapsed
 
@@ -1170,8 +1179,6 @@ class DialogueService:
     def _forced_finish_reason(session: ExperimentSession, participant_turns: int, elapsed: int) -> str | None:
         if participant_turns >= DialogueService.MAX_PARTICIPANT_TURNS:
             return "max_turns"
-        if elapsed >= DialogueService.MAX_ELAPSED_SECONDS:
-            return "max_duration"
         if (
             session.dialogue_finish_decision == "continue_related"
             and session.dialogue_continue_until_turn_count is not None
@@ -1179,6 +1186,22 @@ class DialogueService:
         ):
             return "continue_related_limit"
         return None
+
+    @staticmethod
+    def _active_elapsed_seconds(session: ExperimentSession) -> int:
+        if session.chat_started_at is None:
+            return 0
+        timestamp = now_utc()
+        elapsed = max(0, int(session.dialogue_elapsed_seconds or 0))
+        chat_started_at = as_utc(session.chat_started_at)
+        last_seen = as_utc(session.last_seen_at or session.chat_started_at)
+        if last_seen < chat_started_at:
+            last_seen = chat_started_at
+        gap = elapsed_seconds_between(last_seen, timestamp)
+        if gap <= DialogueService.ACTIVE_ELAPSED_MAX_GAP_SECONDS:
+            elapsed += gap
+        session.last_seen_at = timestamp
+        return elapsed
 
     @staticmethod
     def _finish_prompt_visible(

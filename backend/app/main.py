@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
 from app.db import database_health, get_session
@@ -63,6 +65,37 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def preserve_cors_headers_for_api_errors(request: Request, call_next):
+    response = await call_next(request)
+    _apply_cors_headers(request, response)
+    return response
+
+
+@app.exception_handler(HTTPException)
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_with_cors(request: Request, exc: HTTPException) -> JSONResponse:
+    response = JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=exc.headers,
+    )
+    _apply_cors_headers(request, response)
+    return response
+
+
+def _apply_cors_headers(request: Request, response: Response) -> None:
+    origin = request.headers.get("origin")
+    if origin and _cors_origin_allowed(origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+
+
+def _cors_origin_allowed(origin: str) -> bool:
+    origins = get_settings().cors_origin_list
+    return "*" in origins or origin in origins
 
 
 def require_admin(authorization: str | None = Header(default=None)) -> str:

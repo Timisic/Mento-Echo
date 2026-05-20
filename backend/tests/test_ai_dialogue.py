@@ -5,9 +5,9 @@ from datetime import timedelta
 import pytest
 
 from app.ai_provider import PROMPTLESS_DIALOGUE_MODE, AIProviderError, CodexAppServerProvider, OpenAICompatibleProvider, prompt_for_group
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.models import ChatMessage, ExperimentSession
-from app.services import DialogueService
+from app.services import DialogueService, now_utc
 from tests.conftest import import_participants
 from tests.test_questionnaire_flow import responses_for_phase
 
@@ -311,7 +311,8 @@ def test_completion_eligibility_requires_10_effective_turns_and_15_minutes(clien
     assert client.get(f"/api/participant/sessions/{session_id}/dialogue").status_code == 200
     session = db_session.get(ExperimentSession, session_id)
     assert session is not None
-    session.chat_started_at = session.chat_started_at - timedelta(seconds=DialogueService.MIN_ELAPSED_SECONDS + 5)
+    session.dialogue_elapsed_seconds = DialogueService.MIN_ELAPSED_SECONDS + 5
+    session.last_seen_at = now_utc()
     db_session.commit()
 
     filler = client.post(
@@ -346,12 +347,53 @@ def test_completion_eligibility_requires_10_effective_turns_and_15_minutes(clien
     assert finish.json()["status"] == "chat_completed"
 
 
+def test_dialogue_elapsed_time_does_not_count_offline_gap_or_force_time_limit(client, admin_headers, db_session):
+    session_id = prepared_session(client, admin_headers, code="DOFFLINE", group="experiment")
+    assert client.get(f"/api/participant/sessions/{session_id}/dialogue").status_code == 200
+    session = db_session.get(ExperimentSession, session_id)
+    assert session is not None
+    session.dialogue_elapsed_seconds = 420
+    session.chat_started_at = now_utc() - timedelta(hours=2)
+    session.last_seen_at = now_utc() - timedelta(hours=2)
+    db_session.commit()
+
+    state = client.get(f"/api/participant/sessions/{session_id}/dialogue")
+
+    assert state.status_code == 200
+    progress = state.json()["progress"]
+    assert 420 <= progress["dialogue_elapsed_seconds"] < 500
+    assert progress["forced_to_finish"] is False
+    assert progress["forced_finish_reason"] is None
+
+
+def test_ai_provider_failure_response_keeps_cors_header(client, admin_headers, monkeypatch):
+    session_id = prepared_session(client, admin_headers, code="DCORS", group="experiment")
+    assert client.get(f"/api/participant/sessions/{session_id}/dialogue").status_code == 200
+
+    class FailingProvider:
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            raise AIProviderError("provider_down", "simulated provider failure")
+
+    monkeypatch.setattr("app.services.create_ai_provider", lambda settings: FailingProvider())
+
+    origin = get_settings().cors_origin_list[0]
+    response = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": "我想聊聊当前专业和未来方向。"},
+        headers={"Origin": origin},
+    )
+
+    assert response.status_code == 502
+    assert response.headers["access-control-allow-origin"] == origin
+
+
 def test_finish_branches_and_forced_limits(client, admin_headers, db_session):
     session_id = prepared_session(client, admin_headers, code="DBRANCH", group="experiment")
     assert client.get(f"/api/participant/sessions/{session_id}/dialogue").status_code == 200
     session = db_session.get(ExperimentSession, session_id)
     assert session is not None
-    session.chat_started_at = session.chat_started_at - timedelta(seconds=DialogueService.MIN_ELAPSED_SECONDS + 5)
+    session.dialogue_elapsed_seconds = DialogueService.MIN_ELAPSED_SECONDS + 5
+    session.last_seen_at = now_utc()
     db_session.commit()
 
     for i in range(DialogueService.MIN_PARTICIPANT_TURNS):
@@ -389,7 +431,8 @@ def test_finish_branches_and_forced_limits(client, admin_headers, db_session):
     assert client.get(f"/api/participant/sessions/{c_session_id}/dialogue").status_code == 200
     c_session = db_session.get(ExperimentSession, c_session_id)
     assert c_session is not None
-    c_session.chat_started_at = c_session.chat_started_at - timedelta(seconds=DialogueService.MIN_ELAPSED_SECONDS + 5)
+    c_session.dialogue_elapsed_seconds = DialogueService.MIN_ELAPSED_SECONDS + 5
+    c_session.last_seen_at = now_utc()
     db_session.commit()
     for i in range(DialogueService.MIN_PARTICIPANT_TURNS):
         response = client.post(
@@ -448,7 +491,8 @@ def test_full_participant_path_pre_dialogue_post_completed(client, admin_headers
     assert client.get(f"/api/participant/sessions/{session_id}/dialogue").status_code == 200
     session = db_session.get(ExperimentSession, session_id)
     assert session is not None
-    session.chat_started_at = session.chat_started_at - timedelta(seconds=DialogueService.MIN_ELAPSED_SECONDS + 5)
+    session.dialogue_elapsed_seconds = DialogueService.MIN_ELAPSED_SECONDS + 5
+    session.last_seen_at = now_utc()
     db_session.commit()
     for i in range(10):
         assert client.post(

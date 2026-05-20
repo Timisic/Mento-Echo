@@ -80,7 +80,7 @@ _Avoid_: Best-effort model latency, unlimited Codex wait
 
 
 **Dialogue Completion Eligibility**:
-The state reached when an AI dialogue has at least 10 participant turns and at least 15 minutes elapsed since dialogue start.
+The state reached when an AI dialogue has at least 10 participant turns and at least 15 minutes of active dialogue time. Offline gaps after the participant closes the page do not count toward the timer.
 _Avoid_: AI-approved completion
 
 **Completed Experiment**:
