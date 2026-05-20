@@ -2,6 +2,8 @@
 
 > Converted from `docs/source/研究1-AI对话平台.docx` on 2026-05-14. The Word source remains in the repository; this Markdown file is for searchable documentation and implementation planning.
 
+> 当前 MVP 实现决策（2026-05-20）：AI 对话为 promptless。本文来自早期研究设计材料，涉及实验组/对照组主题、系统提示语或标准化开场语的内容只作为背景，不得直接作为系统提示词、developer/base instruction 或模型侧话题引导发送给 provider；如未来重新启用提示词条件，需要新的研究协议决策。
+
 **研究一：通用大模型对话对大学生身份形成的初步影响**
 
 # 一、研究假设

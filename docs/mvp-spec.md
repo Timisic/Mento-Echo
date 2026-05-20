@@ -166,9 +166,12 @@ MVP provider requirements:
 - Use one configured dialogue model provider selected by environment configuration: `mock`, `deepseek`/OpenAI-compatible, or `codex`.
 - Use an OpenAI-compatible chat completion interface for DeepSeek-style providers.
 - Use local `codex app-server` for Codex mode; Codex CLI installation and login are deployment prerequisites.
+- Prefer Codex GPT-5.5 for participant replies when it can return within the 10-second response SLA.
+- If Codex cannot return within 10 seconds, fall back to DeepSeek or another configured OpenAI-compatible provider instead of keeping the participant waiting.
 - Keep a backend `AIProvider` boundary so the model/provider can be replaced later.
 - Do not hard-code the selected model name in business logic.
 - For Codex mode, persist the provider thread id on the Experiment Session and reuse it for all participant turns in that session.
+- Do not send system prompts, developer instructions, base instructions, or model-side topic guidance to any dialogue model provider.
 
 Every AI response record should preserve enough metadata for reproducibility:
 
@@ -178,7 +181,7 @@ Every AI response record should preserve enough metadata for reproducibility:
 | `base_url` or provider config key | Identifies the OpenAI-compatible endpoint without exposing secrets. |
 | `model_name` | Configured model. |
 | `model_version` or config snapshot | Version if available. |
-| `system_prompt_version` | Prompt condition used for the group. |
+| `prompt_mode` | `promptless` for the current MVP; retained as a data label rather than a hidden prompt version. |
 | `generation_params` | Temperature, max tokens, top_p, etc. |
 | `request_started_at` / `response_completed_at` | Timing diagnostics. |
 | `retry_count` | Stability diagnostics. |
@@ -189,40 +192,11 @@ Every AI response record should preserve enough metadata for reproducibility:
 
 ### Study One Pilot condition
 
-Theme: whether the participant wants to continue their current major and whether future study or work should continue in this direction.
+The Study One Pilot uses a promptless AI dialogue for all participants. The backend must send only the participant-visible conversation history and the latest participant message to the dialogue model provider; it must not add hidden topic framing, system prompts, developer instructions, base instructions, or prompt-condition text.
 
-The Study One Pilot uses this single condition for all participants.
+### Future experiment/control groups
 
-### Future experiment group
-
-Theme: whether the participant wants to continue their current major and whether future study or work should continue in this direction.
-
-The AI should:
-
-- guide the participant to describe current major experience;
-- ask about key experiences and sources of uncertainty;
-- help clarify reasons to continue and reasons for hesitation;
-- encourage reflection on study, work, future lifestyle, values, and self-understanding;
-- summarize core confusion, clarified points, missing information, and next verification actions near the end.
-
-The AI should not present the final summary as a separate formal report; it remains part of the dialogue.
-
-### Control group
-
-Theme: identity-unrelated casual conversation.
-
-Allowed topics include movies, music, food, travel, sports, campus daily life, hobbies, and general knowledge chat.
-
-The AI should avoid actively discussing:
-
-- major choice;
-- career planning;
-- life goals;
-- values;
-- self-understanding;
-- future development.
-
-If the participant raises identity-related content, the AI may answer briefly and redirect to a light topic. Such events should remain visible in raw chat for later manipulation checks or coding.
+Grouped prompt-comparison behavior is out of scope for the current MVP. If a later study needs topic-steered or control-group prompting, that should be introduced as a new protocol decision rather than silently reusing hidden prompts in the current Study One Pilot.
 
 ## Behavior logging
 

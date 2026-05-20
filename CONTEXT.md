@@ -59,8 +59,8 @@ The current pre-experiment flow where all participants receive the same AI dialo
 _Avoid_: Study Two grouping, formal prompt-comparison experiment
 
 **AI Dialogue**:
-The text conversation stage between a participant and the configured large language model.
-_Avoid_: Counseling, therapy, diagnosis
+The promptless text conversation stage between a participant and the configured large language model.
+_Avoid_: Counseling, therapy, diagnosis, prompted topic intervention
 
 **Dialogue Model Provider**:
 The configured source of AI responses during the participant-facing AI dialogue.
@@ -69,6 +69,15 @@ _Avoid_: Researcher agent, coding agent, admin automation
 **Dialogue Model Memory**:
 The provider-side conversation continuity for one experiment session's AI dialogue.
 _Avoid_: Global user memory, browser-only memory, cross-participant memory
+
+**Promptless Dialogue**:
+An AI dialogue mode where the backend sends no system prompt, developer instruction, base instruction, or model-side topic guidance to the dialogue model provider.
+_Avoid_: Hidden research prompt, topic-steering system prompt, dialog instruction
+
+**Dialogue Response SLA**:
+The participant-facing expectation that an assistant reply should become available within 10 seconds, using Codex GPT-5.5 when it can meet that target and falling back to DeepSeek when it cannot.
+_Avoid_: Best-effort model latency, unlimited Codex wait
+
 
 **Dialogue Completion Eligibility**:
 The state reached when an AI dialogue has at least 10 participant turns and at least 15 minutes elapsed since dialogue start.
@@ -115,7 +124,9 @@ _Avoid_: Multi-role staff, coder account
 - The participant-facing experience is blinded to **Group Assignment** labels and assignment source; only the **Researcher Administrator** should see those operational details.
 - A **Pre-survey** must be submitted before the **AI Dialogue** starts.
 - An **AI Dialogue** uses exactly one configured **Dialogue Model Provider** for participant-facing assistant responses.
+- **Promptless Dialogue** means model-side prompts and topic guidance are not sent, even when the study context has a research topic.
 - **Dialogue Model Memory** is scoped to exactly one **Experiment Session** and must survive browser refresh or backend restart.
+- The preferred **Dialogue Model Provider** is Codex GPT-5.5 when it can satisfy the **Dialogue Response SLA**; otherwise the platform should fall back to DeepSeek or another faster OpenAI-compatible provider.
 - A **Post-survey** must be submitted after the **AI Dialogue** is complete.
 - **Dialogue Completion Eligibility** requires both 10 participant turns and 15 elapsed minutes.
 - A **Completed Experiment** requires submitted **Pre-survey**, completed **AI Dialogue**, and submitted **Post-survey**.
@@ -146,6 +157,12 @@ _Avoid_: Multi-role staff, coder account
 >
 > **Dev:** “Can each participant message open a fresh Codex conversation if the stored chat history is still in PostgreSQL?”
 > **Domain expert:** “No. Preserve **Dialogue Model Memory** for the same **Experiment Session** so the provider continues the same conversation after refresh or restart.”
+>
+> **Dev:** “Should the platform send a hidden prompt so the model guides the participant toward the study topic?”
+> **Domain expert:** “No. The current decision is **Promptless Dialogue**: do not send system prompts, developer instructions, base instructions, or model-side topic guidance.”
+>
+> **Dev:** “If Codex GPT-5.5 takes longer than 10 seconds, should we keep waiting because Codex is preferred?”
+> **Domain expert:** “No. Codex GPT-5.5 is preferred only while it can satisfy the **Dialogue Response SLA**; otherwise fall back to DeepSeek so the participant gets a timely reply.”
 
 ## Flagged ambiguities
 
@@ -155,4 +172,6 @@ _Avoid_: Multi-role staff, coder account
 - “Session” can mean browser session, chat session, or experiment lifecycle. Resolved canonical term: **Experiment Session** for the recoverable research lifecycle.
 - “Codex” can mean a coding agent or the model provider behind participant chat. Resolved MVP usage here: Codex is a **Dialogue Model Provider** for the participant-facing **AI Dialogue**, not researcher-side automation.
 - “Memory” can mean global personalization, browser state, database chat history, or provider-side conversation state. Resolved MVP usage here: **Dialogue Model Memory** is scoped only to one **Experiment Session**.
+- “System prompt” / “dialog instruction” previously implied hidden topic steering. Resolved current rule: **Promptless Dialogue** sends no model-side prompt or topic guidance.
+- “Fast Codex” means Codex GPT-5.5 is preferred, not that the participant should wait indefinitely. Resolved current rule: the **Dialogue Response SLA** is 10 seconds, with DeepSeek fallback when Codex cannot meet it.
 - “研究一” was previously documented as a two-group experiment. Current resolved scope: **Study One Pilot** is single-group; grouped prompt-comparison logic belongs to a later study.

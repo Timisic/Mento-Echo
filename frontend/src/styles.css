@@ -33,6 +33,14 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  inline-size: 100%;
+  min-inline-size: 0;
+  overflow-x: clip;
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -126,6 +134,8 @@ li {
 
 .app-shell {
   inline-size: min(1180px, calc(100% - 32px));
+  max-inline-size: 100%;
+  min-inline-size: 0;
   margin: 0 auto;
   padding-block: var(--space-md) var(--space-xl);
 }
@@ -217,6 +227,8 @@ li {
 
 .dialogue-flow {
   min-block-size: 0;
+  min-inline-size: 0;
+  overflow: hidden;
   gap: 0;
 }
 
@@ -516,14 +528,18 @@ li {
   grid-template-rows: auto minmax(0, 1fr);
   gap: var(--space-md);
   min-block-size: 0;
+  min-inline-size: 0;
+  overflow: hidden;
 }
 
 .dialogue-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 250px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 250px);
   gap: var(--space-lg);
   align-items: stretch;
   min-block-size: 0;
+  min-inline-size: 0;
+  overflow: hidden;
 }
 
 .chat-panel,
@@ -535,6 +551,8 @@ li {
   background: var(--surface);
   padding: var(--space-lg);
   box-shadow: 0 10px 28px oklch(35% 0.04 245 / 0.05);
+  min-inline-size: 0;
+  overflow: hidden;
 }
 
 .chat-panel {
@@ -611,7 +629,10 @@ li {
   align-content: start;
   gap: var(--space-sm);
   min-block-size: 0;
-  overflow: auto;
+  min-inline-size: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   background: var(--surface);
   padding: var(--space-sm);
 }
@@ -623,6 +644,8 @@ li {
 
 .message {
   inline-size: min(74ch, 86%);
+  max-inline-size: 100%;
+  min-inline-size: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.78rem 0.92rem;
@@ -710,24 +733,32 @@ li {
 }
 
 .markdown-content pre {
-  overflow-x: auto;
+  max-inline-size: 100%;
+  overflow-x: hidden;
   border-radius: 8px;
   background: var(--surface-strong);
   padding: var(--space-sm);
+  white-space: pre-wrap;
 }
 
 .markdown-content pre code {
   display: block;
   background: transparent;
   padding: 0;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .chat-form {
+  position: sticky;
+  inset-block-end: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-md);
   align-items: end;
+  min-inline-size: 0;
+  background: var(--surface);
+  padding-block-start: var(--space-xs);
 }
 
 .chat-form textarea {
@@ -872,11 +903,12 @@ td {
   }
 
   .dialogue-shell {
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
     gap: var(--space-md);
   }
 
   .dialogue-sidebar {
+    order: -1;
     padding: var(--space-md);
   }
 
@@ -928,7 +960,8 @@ td {
   }
 
   .app-shell:has(.dialogue-flow) {
-    inline-size: min(100% - 16px, 1180px);
+    inline-size: 100%;
+    padding: var(--space-xs);
   }
 
   .dialogue-layout {
@@ -949,7 +982,13 @@ td {
   }
 
   .chat-panel {
-    padding: var(--space-md);
+    padding: var(--space-sm);
+  }
+
+  .chat-form {
+    grid-template-columns: 1fr;
+    gap: var(--space-sm);
+    padding-block-end: max(var(--space-xs), env(safe-area-inset-bottom));
   }
 
   .dialogue-progress {

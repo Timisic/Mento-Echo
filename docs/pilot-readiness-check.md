@@ -2,7 +2,7 @@
 
 Use this sequence before a researcher pilot. It validates the PostgreSQL-backed
 admin dashboard, reset/exclusion controls, behavior events, audit logs, export
-ZIP, privacy boundary, and end-to-end participant flow.
+ZIP, privacy boundary, promptless provider behavior, 10-second dialogue response SLA, mobile chat layout, and end-to-end participant flow.
 
 ## 1. Start PostgreSQL and apply migrations
 
@@ -15,6 +15,7 @@ DATABASE_URL=postgresql+pg8000://mentor_echo:mentor_echo@localhost:5432/mentor_e
   alembic upgrade head
 cd ..
 ```
+
 
 ## 2. Run backend regression evidence
 
@@ -49,7 +50,11 @@ This targeted suite covers:
 - privacy boundaries: no participant names, no frontend provider secrets, no full
   IP export, and no raw chat in `analysis_dataset.csv`;
 - end-to-end flow: import → entry → pre-survey → assignment → chat →
-  eligibility → post-survey → dashboard → export.
+  eligibility → post-survey → dashboard → export;
+- promptless provider behavior: no system prompt, developer instruction, base
+  instruction, or model-side topic guidance is sent for participant dialogue;
+- Codex-first response behavior: Codex GPT-5.5 is preferred, but the participant
+  receives a usable reply within 10 seconds via Codex or configured fallback.
 
 ## 3. Run frontend checks
 
@@ -59,6 +64,11 @@ npm test -- --run
 npm run build
 cd ..
 ```
+
+Manual responsive smoke check the chat page at 375×667, 390×844, tablet, and
+desktop widths. The chat page must not horizontally scroll or drag left/right,
+message bubbles must wrap inside the viewport, and the input must remain
+reachable on mobile.
 
 ## 4. Optional live model smoke check
 
@@ -73,12 +83,14 @@ from app.config import get_settings
 
 s = get_settings()
 result = OpenAICompatibleProvider(s).generate(
-    system_prompt="你是一个健康检查助手。只按用户要求输出，不要额外解释。",
+    system_prompt="",
     messages=[{"role": "user", "content": "请只回复：OK"}],
 )
 print({"provider": result.provider_name, "model": result.model_name, "response": result.content})
 PY
 ```
+
+For Codex live checks, prefer `AI_PROVIDER_NAME=codex`, `AI_MODEL_NAME=gpt-5.5`, `CODEX_TURN_TIMEOUT_SECONDS=10`, and fallback enabled. If direct `codex app-server` startup is too slow, the intended faster native path is daemon/proxy (`codex app-server daemon start` plus `CODEX_COMMAND=codex app-server proxy`), but this requires the standalone Codex install managed by the Codex installer. If daemon start reports a missing standalone install, do not treat proxy as available yet; keep the 10-second fallback to DeepSeek.
 
 Never print or commit `AI_API_KEY`, `ADMIN_PASSWORD`, `ADMIN_TOKEN`, exported raw
 chat, or researcher-held name-to-code rosters.

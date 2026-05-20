@@ -123,10 +123,10 @@ const dialogueState = {
     met_min_turns: false,
     met_min_duration: false,
     eligible_to_finish: false,
-    required_participant_turns: 6,
-    required_elapsed_seconds: 600,
+    required_participant_turns: 10,
+    required_elapsed_seconds: 900,
     max_participant_turns: 12,
-    max_elapsed_seconds: 1200,
+    max_elapsed_seconds: 3600,
     finish_prompt_visible: false,
     forced_to_finish: false,
     forced_finish_reason: null,
@@ -317,8 +317,8 @@ describe('Mentor Echo 前端 UI', () => {
     expect(container.querySelector('.topic-banner')).toBeNull();
     expect(await screen.findByText('请继续围绕专业选择与未来方向交流。')).toBeInTheDocument();
     expect(screen.queryByText('请确认接下来的提问仍围绕专业选择、未来方向、升学或就业展开。')).not.toBeInTheDocument();
-    expect(screen.getByText('消息数：3 / 6')).toBeInTheDocument();
-    expect(screen.getByText('对话时长：04:21 / 10:00')).toBeInTheDocument();
+    expect(screen.getByText('消息数：3 / 10')).toBeInTheDocument();
+    expect(screen.getByText('对话时长：04:21 / 15:00')).toBeInTheDocument();
     expect(screen.getByText('尚未达到完成条件')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '暂不能进入后测' })).toBeDisabled();
     expect(screen.queryByText('major_choice_dialogue_protocol_v2')).not.toBeInTheDocument();
@@ -335,7 +335,7 @@ describe('Mentor Echo 前端 UI', () => {
 
     expect(await screen.findByText('我在想是否继续读当前专业。')).toBeInTheDocument();
     expect(screen.getByLabelText('对话内容')).toHaveValue('');
-    expect(screen.getByLabelText('thinking')).toBeInTheDocument();
+    expect(screen.getByLabelText('正在生成回复')).toBeInTheDocument();
     expect(screen.queryByText('正在处理，请稍候。')).not.toBeInTheDocument();
 
     resolveSendMessage?.(

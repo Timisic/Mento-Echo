@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import get_settings
 from app.db import database_health, get_session
-from app.ai_provider import prompt_for_group
 from app.export_service import build_export_zip
 from app.models import AuditLog, BehaviorEvent, ChatMessage, ExperimentSession, Participant, QuestionnaireScore
 from app.questionnaire_config import QUESTIONNAIRE_VERSION, SCALE_PROFILES

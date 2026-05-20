@@ -44,7 +44,7 @@ Questionnaire wording, item count, item mapping, scoring rules, and version are 
 
 ## Confirmed product / UX decisions
 
-1. **Participant-facing screens hide group/admin internals.** Participants must not see experiment/control labels, assignment source, experiment session ID, system prompt version, backend status fields, provider metadata, export controls, reset/exclusion controls, or researcher/admin internals.
+1. **Participant-facing screens hide group/admin internals.** Participants must not see experiment/control labels, assignment source, experiment session ID, prompt mode, backend status fields, provider metadata, export controls, reset/exclusion controls, or researcher/admin internals.
 2. **Participant flow is system-controlled and one-way.** Participants may refresh and resume the current stage, but they must not manually skip stages, enter post-survey early, or resubmit locked questionnaires.
 3. **Questionnaire UI is grouped and readable.** Do not show one long raw list. Use neutral Chinese section titles and progress. Do not expose English instrument names to participants.
 4. **Questionnaire filling does not require backend autosave per item.** Preserve answers while navigating within the frontend session; warn before refresh/navigation when there are unsaved answers; validate missing responses before submit; keep answers after submit failure; show submitted-and-locked state after success.
@@ -96,7 +96,7 @@ Mentor Echo AI 对话实验平台
 [我是研究者，进入管理后台]
 ```
 
-Participant-facing screens must not show admin operations, assignment internals, group labels, assignment source, session ID, system prompt version, backend status fields, export controls, reset/exclusion buttons, or provider metadata.
+Participant-facing screens must not show admin operations, assignment internals, group labels, assignment source, session ID, prompt mode, backend status fields, export controls, reset/exclusion buttons, or provider metadata.
 
 Researcher-facing screens must require login before showing import, dashboard, reset, exclusion, export, audit/behavior summaries, or sensitive-data actions.
 
@@ -233,7 +233,9 @@ Submit screen should warn:
 
 ### 6. Dialogue UI
 
-Replace tracer-style message lists with a chat-like layout and visible completion progress:
+Replace tracer-style message lists with a phone-first, single-screen chat layout and visible completion progress. Participant-facing topic copy such as “talk about your major/future direction” is allowed because it is part of the study task; the promptless rule applies to model-side prompts/instructions, not to visible participant guidance. The page must prevent horizontal scrolling on mobile and desktop: no sideways drag, no clipped message bubbles, no table-like overflow in the chat surface, and long content wraps inside the viewport. The input stays reachable at the bottom of the single-screen mobile chat experience.
+
+Visible progress copy:
 
 ```text
 完成要求：
@@ -258,7 +260,7 @@ After eligibility:
 [结束对话并进入后测]
 ```
 
-Copy must make clear that completion eligibility is determined by platform rules, not AI approval.
+Copy must make clear that completion eligibility is determined by platform rules, not AI approval. Loading copy should expose only participant-friendly states such as “正在生成回复”; do not expose provider names, thread ids, prompt details, timeout internals, or fallback mechanics to participants.
 
 ### 7. Researcher dashboard UI
 
@@ -311,11 +313,15 @@ App
 ## Acceptance criteria
 
 - [ ] Participant and researcher flows are visually and functionally separated.
-- [ ] Participant screens hide group labels, assignment source, session ID, prompt version, backend status fields, provider metadata, export/reset/exclusion controls, and admin internals.
+- [ ] Participant screens hide group labels, assignment source, session ID, prompt mode, backend status fields, provider metadata, export/reset/exclusion controls, and admin internals.
 - [ ] Participant flow is system-controlled: entry → guide → pre-survey → AI guide → dialogue → post-survey → completion.
 - [ ] Questionnaire UI uses clickable scale controls, categorical buttons/cards, grouping/pagination, progress, required-item validation, and submit-locking feedback.
 - [ ] Questionnaire UI renders backend-provided content for `mentor_echo_questionnaire_v2026_05_15_major_umics_only` without changing wording or scoring assumptions.
 - [ ] AI dialogue UI shows 10-message + 15-minute completion progress and explains blocked/eligible states in Chinese.
+- [ ] Dialogue provider calls are promptless: no system prompt, developer instruction, base instruction, or model-side topic guidance.
+- [ ] Codex GPT-5.5 is preferred, but a participant-facing reply must be available within 10 seconds via Codex or fallback provider.
+- [ ] Mobile chat is phone-first single-screen at 375×667 and 390×844: no horizontal scrolling, no sideways drag, message text wraps, and the input remains reachable.
+- [ ] Desktop chat also has no horizontal page/chat overflow.
 - [ ] Researcher dashboard supports pilot operations with summary cards, table, reset/exclusion confirmations, export confirmation, and sensitive raw-chat warning.
 - [ ] Full raw chat is not displayed inline by default in the dashboard.
 - [ ] Loading, error, success, blocked, and locked states use understandable Chinese copy.
@@ -332,6 +338,8 @@ Run and report:
 - Manual/UI smoke path for participant flow
 - Manual/UI smoke path for researcher dashboard
 - Privacy check that participant UI hides admin/internal fields and dashboard does not inline raw chat
+- Responsive check at 375×667, 390×844, tablet, and desktop widths with no horizontal scrolling in the chat page
+- Provider behavior check that model calls are promptless and Codex timeout/fallback still satisfies the 10-second participant response SLA
 
 ## Blocked by
 

@@ -1043,8 +1043,8 @@ function DialoguePage({
               ))
             )}
             {assistantThinking ? (
-              <article className="message assistant thinking" aria-label="thinking">
-                <span>thinking</span>
+              <article className="message assistant thinking" aria-label="正在生成回复">
+                <span>正在生成回复</span>
                 <span className="thinking-box" aria-hidden="true" />
               </article>
             ) : null}

@@ -47,10 +47,10 @@ A single researcher administrator account can import participant codes, monitor 
 31. As a researcher administrator, I want to mark a participant as excluded, so that invalid sessions can be separated from analysis without deleting raw records.
 32. As a researcher administrator, I want participant resume events recorded, so that unusual interruptions can be considered during data review.
 33. As a researcher administrator, I want key behavior events recorded, so that I can reconstruct what happened in each experiment session.
-34. As a researcher administrator, I want AI call failures, retries, latency, provider name, model name, and prompt version recorded, so that technical issues can be diagnosed.
+34. As a researcher administrator, I want AI call failures, retries, latency, provider name, model name, prompt mode, and fallback source recorded, so that technical issues can be diagnosed.
 35. As a researcher administrator, I do not want high-granularity keystroke or focus analytics in the MVP, so that logging remains privacy-conscious and implementation stays focused.
-36. As a researcher administrator, I want a single configured dialogue model provider selected from `.env`, so that the MVP can use DeepSeek/OpenAI-compatible or local Codex while remaining replaceable later.
-37. As a developer, I want model name, provider endpoint configuration, generation parameters, provider thread id when applicable, and system prompt version stored with AI messages or the experiment session, so that model behavior is reproducible.
+36. As a researcher administrator, I want Codex GPT-5.5 preferred for AI dialogue when it can respond within 10 seconds, with DeepSeek/OpenAI-compatible fallback when it cannot, so that participant experience stays responsive without giving up Codex when it is viable.
+37. As a developer, I want model name, provider endpoint configuration, generation parameters, provider thread id when applicable, prompt mode, latency, and fallback metadata stored with AI messages or the experiment session, so that model behavior is reproducible without storing hidden prompt versions.
 38. As a developer, I want API keys to remain server-side, so that participants and browsers never receive provider secrets.
 39. As a researcher administrator, I want a ZIP export generated from PostgreSQL, so that the export is a reproducible snapshot of the system of record.
 40. As a researcher administrator, I want `participants.csv`, `experiment_sessions.csv`, `questionnaire_responses.csv`, `questionnaire_scores.csv`, `chat_messages.jsonl`, `behavior_events.jsonl`, `audit_logs.csv`, `ai_call_records.csv`, and an export manifest, so that raw and operational data are available for review.
@@ -59,7 +59,7 @@ A single researcher administrator account can import participant codes, monitor 
 43. As a researcher administrator, I want raw chat exported separately and clearly marked as sensitive, so that routine statistical workflows do not unnecessarily spread dialogue text.
 44. As a researcher administrator, I want raw item responses and derived questionnaire scores stored separately, so that scoring rules can be audited and recomputed if necessary.
 45. As a researcher administrator, I want attention-check results exported, so that invalid responses can be screened.
-46. As a researcher administrator, I want the export README to include questionnaire version, prompt versions, AI model configuration, completion rules, and privacy warnings, so that analysis files remain interpretable later.
+46. As a researcher administrator, I want the export README to include questionnaire version, prompt mode, AI model configuration, fallback behavior, completion rules, and privacy warnings, so that analysis files remain interpretable later.
 47. As a developer, I want PostgreSQL to be the only system of record, so that generated exports do not become competing primary data stores.
 48. As a developer, I want the experiment lifecycle to be represented as a clear state machine, so that invalid transitions are rejected consistently.
 49. As a developer, I want group assignment, questionnaire scoring, dialogue eligibility, AI provider calls, and export building to be deep modules with stable interfaces, so that they can be tested in isolation.
@@ -99,9 +99,10 @@ A single researcher administrator account can import participant codes, monitor 
 - Build a Questionnaire Definition module that renders versioned pre-survey and post-survey definitions from structured configuration. The MVP admin UI must not edit questionnaire text, options, or scoring rules.
 - Build a Questionnaire Response module that stores locked raw responses by participant, phase, item, questionnaire version, instrument, and dimension.
 - Build a Questionnaire Scoring module that computes derived pre scores, post scores, attention-check status, and change scores for export. It should be usable without rendering UI.
-- Build an AI Provider module with a configurable provider boundary. DeepSeek-style providers use OpenAI-compatible chat completions and server-side API key handling; Codex uses local `codex app-server` and persists a thread id per Experiment Session. Business logic should depend on a provider interface rather than a hard-coded vendor call.
-- Build an AI Dialogue module that stores participant messages, assistant messages, prompt version, provider metadata, model name, generation parameters, timing, retry count, and sanitized errors.
-- Enforce dialogue completion eligibility in backend logic using both thresholds: at least 10 participant turns and at least 15 minutes since dialogue start. The AI may summarize but must not determine eligibility.
+- Build an AI Provider module with a configurable provider boundary. Codex GPT-5.5 is preferred for participant dialogue when it can satisfy the 10-second response SLA; DeepSeek-style OpenAI-compatible providers are fallback options with server-side API key handling. Codex uses local `codex app-server` and persists a thread id per Experiment Session. Business logic should depend on a provider interface rather than a hard-coded vendor call.
+- Build an AI Dialogue module that stores participant messages, assistant messages, prompt mode (`promptless`), provider metadata, model name, generation parameters, timing, retry count, fallback metadata, and sanitized errors.
+- Do not send system prompts, developer instructions, base instructions, or model-side topic guidance to dialogue model providers in the current Study One Pilot.
+- Enforce dialogue completion eligibility in backend logic using both thresholds: at least 10 participant turns and at least 15 minutes since dialogue start. The AI must not determine eligibility.
 - Build a Behavior Event module for key experiment events and technical diagnostics, not high-granularity frontend analytics.
 - Build an Audit Log module for administrator actions such as import, reset, exclusion, configuration change, and export.
 - Build an Export Package module that creates a ZIP archive from PostgreSQL and includes raw tables, derived scoring files, an analysis dataset, raw chat JSONL, behavior events, audit logs, AI call diagnostics, README, and manifest.
@@ -109,7 +110,7 @@ A single researcher administrator account can import participant codes, monitor 
 - Provide frontend participant screens for self-generating or entering a participant code, pre-survey, Study One Pilot dialogue, dialogue completion progress, post-survey, and final completion.
 - Provide frontend admin screens for login, participant import, progress dashboard, participant detail/review, reset/exclusion actions, and export trigger/download.
 - Use a backend API boundary that supports participant flow endpoints, admin flow endpoints, AI dialogue endpoints, questionnaire endpoints, and export endpoints. Keep API details stable enough for future UI redesign.
-- Store enough AI provider metadata for reproducibility: provider name, endpoint configuration key or base URL identity without secrets, model name, available model version/config snapshot, prompt version, generation parameters, request/response timestamps, retry count, and sanitized error data.
+- Store enough AI provider metadata for reproducibility: provider name, endpoint configuration key or base URL identity without secrets, model name, available model version/config snapshot, prompt mode, generation parameters, request/response timestamps, retry count, fallback metadata, and sanitized error data.
 - Questionnaire HITL was resolved on 2026-05-15: bracket placeholders render as 专业选择; DIDS is removed from both phases; U-MICS is retained; the current implementation map is `mentor_echo_questionnaire_v2026_05_15_major_umics_only`.
 
 ## Testing Decisions

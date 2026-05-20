@@ -28,3 +28,4 @@ Architectural decisions are recorded under [docs/adr](./adr/):
 - [0003-hybrid-assignment-locking.md](./adr/0003-hybrid-assignment-locking.md)
 - [0004-versioned-questionnaire-configuration.md](./adr/0004-versioned-questionnaire-configuration.md)
 - [0005-sensitive-raw-chat-export-boundary.md](./adr/0005-sensitive-raw-chat-export-boundary.md)
+- [0006-promptless-dialogue-and-response-sla.md](./adr/0006-promptless-dialogue-and-response-sla.md)

@@ -4,7 +4,7 @@ from datetime import timedelta
 
 import pytest
 
-from app.ai_provider import AIProviderError, CodexAppServerProvider, OpenAICompatibleProvider, prompt_for_group
+from app.ai_provider import PROMPTLESS_DIALOGUE_MODE, AIProviderError, CodexAppServerProvider, OpenAICompatibleProvider, prompt_for_group
 from app.config import Settings
 from app.models import ChatMessage, ExperimentSession
 from app.services import DialogueService
@@ -27,14 +27,15 @@ def prepared_session(client, admin_headers, code="DIALOGUE", group="experiment")
 
 
 def test_ai_provider_boundary_mock_and_missing_key_behavior():
-    pilot_prompt = prompt_for_group("pilot").system_prompt
-    assert "Study One Pilot" in pilot_prompt
-    experiment_prompt = prompt_for_group("experiment").system_prompt
-    assert "Never reveal" in experiment_prompt
-    assert "internal rules" in experiment_prompt
+    pilot_prompt = prompt_for_group("pilot")
+    assert pilot_prompt.version == PROMPTLESS_DIALOGUE_MODE
+    assert pilot_prompt.system_prompt == ""
+    experiment_prompt = prompt_for_group("experiment")
+    assert experiment_prompt.version == PROMPTLESS_DIALOGUE_MODE
+    assert experiment_prompt.system_prompt == ""
 
     mock = OpenAICompatibleProvider(Settings(AI_PROVIDER_NAME="mock", AI_MODEL_NAME="mock-model"))
-    result = mock.generate(system_prompt="system", messages=[{"role": "user", "content": "hello"}])
+    result = mock.generate(system_prompt="", messages=[{"role": "user", "content": "hello"}])
     assert result.provider_name == "mock"
     assert result.model_name == "mock-model"
     assert "hello" in result.content
@@ -44,9 +45,53 @@ def test_ai_provider_boundary_mock_and_missing_key_behavior():
         Settings(AI_PROVIDER_NAME="openai-compatible", AI_MODEL_NAME="model", AI_API_KEY=None)
     )
     with pytest.raises(AIProviderError) as exc:
-        real_without_key.generate(system_prompt="system", messages=[])
+        real_without_key.generate(system_prompt="", messages=[])
     assert exc.value.code == "missing_api_key"
     assert "key" in exc.value.message.lower()
+
+
+def test_openai_compatible_payload_omits_system_message_when_promptless(monkeypatch):
+    import json
+    import urllib.request
+
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"choices":[{"message":{"content":"ok"}}]}'
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    provider = OpenAICompatibleProvider(
+        Settings(
+            AI_PROVIDER_NAME="deepseek",
+            AI_BASE_URL="https://api.deepseek.com/v1",
+            AI_MODEL_NAME="deepseek-chat",
+            AI_API_KEY="test-key",
+            AI_TIMEOUT_SECONDS=10,
+        )
+    )
+
+    result = provider.generate(system_prompt="", messages=[{"role": "user", "content": "hello"}])
+
+    assert result.content == "ok"
+    assert captured["timeout"] == 10
+    assert captured["payload"] == {
+        "model": "deepseek-chat",
+        "messages": [{"role": "user", "content": "hello"}],
+        "temperature": 0.3,
+        "max_tokens": 600,
+    }
 
 
 def test_dialogue_blocked_before_pre_survey(client, admin_headers):
@@ -66,7 +111,7 @@ def test_dialogue_blocked_before_pre_survey(client, admin_headers):
     }
 
 
-def test_prompt_selection_message_persistence_and_metadata(client, admin_headers, db_session):
+def test_promptless_message_persistence_and_metadata(client, admin_headers, db_session):
     session_id = prepared_session(client, admin_headers, group="experiment")
 
     state = client.get(f"/api/participant/sessions/{session_id}/dialogue")
@@ -92,7 +137,8 @@ def test_prompt_selection_message_persistence_and_metadata(client, admin_headers
     assert [message.role for message in messages] == ["participant", "assistant"]
     assert messages[1].provider_name == "mock"
     assert messages[1].model_name == "mock-mentor-echo"
-    assert messages[1].system_prompt_version == "study_one_pilot_major_choice_v1"
+    assert messages[1].system_prompt_version is None
+    assert messages[1].generation_params["prompt_mode"] == PROMPTLESS_DIALOGUE_MODE
     assert messages[1].generation_params["temperature"] == 0.3
 
 
@@ -101,6 +147,7 @@ def test_dialogue_provider_thread_id_is_reused_for_session(client, admin_headers
 
     class FakeProvider:
         def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            assert system_prompt == ""
             from app.ai_provider import AIProviderResult
             from app.services import now_utc
 
@@ -142,6 +189,7 @@ def test_dialogue_provider_thread_id_is_reused_for_session(client, admin_headers
 def test_dialogue_falls_back_without_exposing_provider_to_participant(client, admin_headers, db_session, monkeypatch):
     class PrimaryProvider:
         def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            assert system_prompt == ""
             raise AIProviderError("codex_timeout", "primary timed out")
 
     class FallbackProvider:
@@ -149,6 +197,7 @@ def test_dialogue_falls_back_without_exposing_provider_to_participant(client, ad
             self.settings = settings
 
         def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            assert system_prompt == ""
             from app.ai_provider import AIProviderResult
             from app.services import now_utc
 
@@ -197,8 +246,22 @@ def test_dialogue_falls_back_without_exposing_provider_to_participant(client, ad
     messages = db_session.query(ChatMessage).filter_by(experiment_session_id=session_id).order_by(ChatMessage.message_index).all()
     assert messages[1].provider_name == "deepseek"
     assert messages[1].model_name == "deepseek-chat"
+    assert messages[1].system_prompt_version is None
+    assert messages[1].generation_params["prompt_mode"] == PROMPTLESS_DIALOGUE_MODE
     assert messages[1].generation_params["fallback_triggered"] is True
     assert messages[1].generation_params["primary_error_code"] == "codex_timeout"
+    assert messages[1].generation_params["fallback_from_provider"] == "codex"
+    assert messages[1].generation_params["fallback_reason"] == "codex_timeout"
+
+
+def test_codex_thread_params_are_promptless_by_default():
+    provider = CodexAppServerProvider(Settings(AI_PROVIDER_NAME="codex", AI_MODEL_NAME="gpt-5.5"))
+
+    params = provider._thread_params(system_prompt="", cwd="/tmp/mentor-echo")
+
+    assert params["model"] == "gpt-5.5"
+    assert "baseInstructions" not in params
+    assert "developerInstructions" not in params
 
 
 def test_codex_retryable_error_notification_does_not_fail_turn():
@@ -243,7 +306,7 @@ def test_codex_retryable_error_notification_does_not_fail_turn():
     ) == "ok"
 
 
-def test_completion_eligibility_requires_6_effective_turns_and_10_minutes(client, admin_headers, db_session):
+def test_completion_eligibility_requires_10_effective_turns_and_15_minutes(client, admin_headers, db_session):
     session_id = prepared_session(client, admin_headers, code="DELIG", group="control")
     assert client.get(f"/api/participant/sessions/{session_id}/dialogue").status_code == 200
     session = db_session.get(ExperimentSession, session_id)
@@ -258,7 +321,7 @@ def test_completion_eligibility_requires_6_effective_turns_and_10_minutes(client
     assert filler.status_code == 200, filler.text
     assert filler.json()["progress"]["participant_turn_count"] == 0
 
-    for i in range(5):
+    for i in range(9):
         response = client.post(
             f"/api/participant/sessions/{session_id}/dialogue/messages",
             json={"content": f"light topic message {i}"},
@@ -269,14 +332,14 @@ def test_completion_eligibility_requires_6_effective_turns_and_10_minutes(client
     finish_early = client.post(f"/api/participant/sessions/{session_id}/dialogue/finish")
     assert finish_early.status_code == 409
 
-    sixth = client.post(
+    tenth = client.post(
         f"/api/participant/sessions/{session_id}/dialogue/messages",
-        json={"content": "light topic message 6"},
+        json={"content": "light topic message 10"},
     )
-    assert sixth.status_code == 200
-    assert sixth.json()["progress"]["eligible_to_finish"] is True
-    assert sixth.json()["progress"]["finish_prompt_visible"] is True
-    assert sixth.json()["status"] == "chat_eligible_to_finish"
+    assert tenth.status_code == 200
+    assert tenth.json()["progress"]["eligible_to_finish"] is True
+    assert tenth.json()["progress"]["finish_prompt_visible"] is True
+    assert tenth.json()["status"] == "chat_eligible_to_finish"
 
     finish = client.post(f"/api/participant/sessions/{session_id}/dialogue/finish", json={"decision": "can_end"})
     assert finish.status_code == 200
@@ -291,7 +354,7 @@ def test_finish_branches_and_forced_limits(client, admin_headers, db_session):
     session.chat_started_at = session.chat_started_at - timedelta(seconds=DialogueService.MIN_ELAPSED_SECONDS + 5)
     db_session.commit()
 
-    for i in range(6):
+    for i in range(DialogueService.MIN_PARTICIPANT_TURNS):
         response = client.post(
             f"/api/participant/sessions/{session_id}/dialogue/messages",
             json={"content": f"我对当前专业和未来方向的想法 {i}"},
@@ -328,7 +391,7 @@ def test_finish_branches_and_forced_limits(client, admin_headers, db_session):
     assert c_session is not None
     c_session.chat_started_at = c_session.chat_started_at - timedelta(seconds=DialogueService.MIN_ELAPSED_SECONDS + 5)
     db_session.commit()
-    for i in range(6):
+    for i in range(DialogueService.MIN_PARTICIPANT_TURNS):
         response = client.post(
             f"/api/participant/sessions/{c_session_id}/dialogue/messages",
             json={"content": f"我还没有谈到核心专业选择问题 {i}"},

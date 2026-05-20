@@ -32,7 +32,8 @@ Human-readable export description:
 - export timestamp;
 - questionnaire version;
 - AI provider/model configuration snapshot;
-- system prompt versions;
+- prompt mode (`promptless` for the current MVP);
+- AI response SLA and fallback rule: prefer Codex GPT-5.5 within 10 seconds, otherwise fall back to DeepSeek/OpenAI-compatible provider;
 - completion rule: 10 participant turns + 15 minutes;
 - group assignment rules;
 - privacy warning for raw chat;
@@ -170,8 +171,9 @@ Suggested fields:
 - `created_at`
 - `provider_name` for assistant messages
 - `model_name` for assistant messages
-- `system_prompt_version` for assistant messages
+- `prompt_mode` for assistant messages (`promptless` in the current MVP)
 - `generation_params` for assistant messages
+- `fallback_from_provider` / `fallback_reason` when a fallback provider was used
 
 ### behavior_events.jsonl
 
@@ -213,7 +215,8 @@ Suggested fields:
 - `participant_code`
 - `provider_name`
 - `model_name`
-- `system_prompt_version`
+- `prompt_mode`
+- `fallback_from_provider` / `fallback_reason`
 - `request_started_at`
 - `response_completed_at`
 - `duration_ms`

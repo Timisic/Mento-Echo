@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai_provider import CONTROL_PROMPT_VERSION, EXPERIMENT_PROMPT_VERSION, PILOT_PROMPT_VERSION
+from app.ai_provider import PROMPTLESS_DIALOGUE_MODE
 from app.config import get_settings
 from app.models import (
     AuditLog,
@@ -357,7 +357,7 @@ def _chat_message_rows(db: Session) -> list[dict[str, Any]]:
                 "created_at": message.created_at,
                 "provider_name": message.provider_name,
                 "model_name": message.model_name,
-                "system_prompt_version": message.system_prompt_version,
+                "prompt_mode": (message.generation_params or {}).get("prompt_mode", PROMPTLESS_DIALOGUE_MODE),
                 "generation_params": message.generation_params,
             }
         )
@@ -410,7 +410,9 @@ def _ai_call_rows(db: Session) -> list[dict[str, Any]]:
             "participant_code": message.participant_code,
             "provider_name": message.provider_name,
             "model_name": message.model_name,
-            "system_prompt_version": message.system_prompt_version,
+            "prompt_mode": (message.generation_params or {}).get("prompt_mode", PROMPTLESS_DIALOGUE_MODE),
+            "fallback_from_provider": (message.generation_params or {}).get("fallback_from_provider"),
+            "fallback_reason": (message.generation_params or {}).get("fallback_reason"),
             "request_started_at": message.request_started_at,
             "response_completed_at": message.response_completed_at,
             "duration_ms": message.duration_ms,
@@ -444,9 +446,9 @@ must not become a competing source of truth.
 - AI model: `{settings.ai_model_name}`
 - Study mode: `{settings.study_mode}`
 - Generation parameters: temperature `{settings.ai_temperature}`, max tokens `{settings.ai_max_tokens}`
-- Pilot prompt version: `{PILOT_PROMPT_VERSION}`
-- Experiment prompt version: `{EXPERIMENT_PROMPT_VERSION}`
-- Control prompt version: `{CONTROL_PROMPT_VERSION}`
+- Prompt mode: `{PROMPTLESS_DIALOGUE_MODE}`
+- Response SLA: `{settings.ai_response_sla_seconds}` seconds
+- Fallback provider: `{settings.ai_fallback_provider_name}` when enabled and available
 - Completion rule: 10 participant turns + 15 minutes
 - Group assignment: imported assignment wins; blank imports randomize once and then lock
 

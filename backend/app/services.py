@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.ai_provider import AIProviderError, AIProviderResult, create_ai_provider, prompt_for_group
+from app.ai_provider import PROMPTLESS_DIALOGUE_MODE, AIProviderError, AIProviderResult, create_ai_provider
 from app.config import Settings, get_settings
 from app.models import (
     AuditLog,
@@ -728,8 +728,8 @@ class QuestionnaireService:
 
 
 class DialogueService:
-    MIN_PARTICIPANT_TURNS = 6
-    MIN_ELAPSED_SECONDS = 10 * 60
+    MIN_PARTICIPANT_TURNS = 10
+    MIN_ELAPSED_SECONDS = 15 * 60
     MAX_PARTICIPANT_TURNS = 12
     MAX_ELAPSED_SECONDS = 60 * 60
     CONTINUE_RELATED_MIN_EXTRA_TURNS = 2
@@ -811,12 +811,11 @@ class DialogueService:
         db.add(participant_message)
         db.flush()
         history = DialogueService._provider_history(db, session_id=session.id)
-        prompt = prompt_for_group(session.group or "")
         settings = get_settings()
         try:
             result, primary_error = DialogueService._generate_with_fallback(
                 settings=settings,
-                system_prompt=prompt.system_prompt,
+                system_prompt="",
                 history=history,
                 provider_thread_id=session.dialogue_model_thread_id,
             )
@@ -824,11 +823,13 @@ class DialogueService:
                 session.dialogue_model_thread_id = result.provider_thread_id
             if result.provider_turn_id:
                 session.dialogue_model_turn_id = result.provider_turn_id
-            generation_params = dict(result.generation_params)
+            generation_params = {"prompt_mode": PROMPTLESS_DIALOGUE_MODE, **dict(result.generation_params)}
             if primary_error is not None:
                 generation_params["fallback_triggered"] = True
                 generation_params["primary_error_code"] = primary_error.code
                 generation_params["primary_error_message_sanitized"] = primary_error.message
+                generation_params["fallback_from_provider"] = settings.ai_provider_name
+                generation_params["fallback_reason"] = primary_error.code
             if result.provider_thread_id:
                 generation_params["provider_thread_id"] = result.provider_thread_id
             if result.provider_turn_id:
@@ -841,7 +842,7 @@ class DialogueService:
                 content=result.content,
                 provider_name=result.provider_name,
                 model_name=result.model_name,
-                system_prompt_version=prompt.version,
+                system_prompt_version=None,
                 generation_params=generation_params,
                 request_started_at=result.request_started_at,
                 response_completed_at=result.response_completed_at,
@@ -860,7 +861,7 @@ class DialogueService:
                         "primary_model_name": settings.ai_model_name,
                         "fallback_provider_name": result.provider_name,
                         "fallback_model_name": result.model_name,
-                        "system_prompt_version": prompt.version,
+                        "prompt_mode": PROMPTLESS_DIALOGUE_MODE,
                         "primary_error_code": primary_error.code,
                         "primary_error_message_sanitized": primary_error.message,
                     },
@@ -875,8 +876,8 @@ class DialogueService:
                 content="",
                 provider_name=settings.ai_provider_name,
                 model_name=settings.ai_model_name,
-                system_prompt_version=prompt.version,
-                generation_params={},
+                system_prompt_version=None,
+                generation_params={"prompt_mode": PROMPTLESS_DIALOGUE_MODE},
                 request_started_at=timestamp,
                 response_completed_at=timestamp,
                 duration_ms=0,
@@ -894,7 +895,7 @@ class DialogueService:
                 metadata={
                     "provider_name": settings.ai_provider_name,
                     "model_name": settings.ai_model_name,
-                    "system_prompt_version": prompt.version,
+                    "prompt_mode": PROMPTLESS_DIALOGUE_MODE,
                     "retry_count": 0,
                     "error_code": exc.code,
                     "error_message_sanitized": exc.message,
@@ -921,7 +922,7 @@ class DialogueService:
                 "message_index": next_index + 1,
                 "provider_name": assistant_message.provider_name,
                 "model_name": assistant_message.model_name,
-                "system_prompt_version": assistant_message.system_prompt_version,
+                "prompt_mode": PROMPTLESS_DIALOGUE_MODE,
             },
         )
         DialogueService.update_progress(db, session=session)
@@ -1137,13 +1138,14 @@ class DialogueService:
             AI_MODEL_NAME=settings.ai_fallback_model_name,
             AI_TEMPERATURE=settings.ai_fallback_temperature,
             AI_MAX_TOKENS=settings.ai_fallback_max_tokens,
-            AI_TIMEOUT_SECONDS=settings.ai_fallback_timeout_seconds,
+            AI_TIMEOUT_SECONDS=min(settings.ai_fallback_timeout_seconds, settings.ai_response_sla_seconds),
+            AI_RESPONSE_SLA_SECONDS=settings.ai_response_sla_seconds,
             CODEX_COMMAND=settings.codex_command,
             CODEX_APPROVAL_POLICY=settings.codex_approval_policy,
             CODEX_SANDBOX=settings.codex_sandbox,
             CODEX_REASONING_EFFORT=settings.codex_reasoning_effort,
             CODEX_READ_TIMEOUT_SECONDS=settings.codex_read_timeout_seconds,
-            CODEX_TURN_TIMEOUT_SECONDS=settings.codex_turn_timeout_seconds,
+            CODEX_TURN_TIMEOUT_SECONDS=min(settings.codex_turn_timeout_seconds, settings.ai_response_sla_seconds),
             CODEX_CWD=settings.codex_cwd,
         )
 

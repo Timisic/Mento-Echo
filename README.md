@@ -24,8 +24,8 @@ Mentor Echo 是一个用于研究“AI 对话是否能促进大学生身份发�
 - 同一编号再次进入时会恢复同一个实验会话，避免重复提交。
 - 前测提交后锁定，不允许被试自行修改。
 - 当前默认 `STUDY_MODE=pilot_single`：研究一预实验暂不展示、不执行实验组/控制组分配，所有被试进入同一套 AI 对话。
-- 后续研究二可切换到 `STUDY_MODE=grouped`，恢复导入/随机分组和不同提示词条件。
-- AI 对话当前围绕专业、未来学习/工作方向、价值、目标、自我理解与身份发展展开。
+- 后续研究二可切换到 `STUDY_MODE=grouped`，恢复导入/随机分组；如需提示词条件，应作为新的研究协议决策重新确认。
+- 当前 AI 对话为 promptless：后端不向模型发送系统提示词、developer/base instruction 或话题引导。
 - 完成 AI 对话必须同时满足：
   - 至少 10 条被试消息；
   - 至少 15 分钟对话时长。
@@ -82,7 +82,7 @@ export_manifest.json
 - 前端：React + TypeScript + Vite
 - 后端：FastAPI + SQLAlchemy + Alembic + Pydantic Settings
 - 数据库：PostgreSQL
-- AI 调用：后端 provider 边界，支持 mock、DeepSeek/OpenAI-compatible Chat Completions、Codex app-server
+- AI 调用：后端 provider 边界，优先支持 promptless Codex GPT-5.5；若 10 秒内不能返回，则降级到 DeepSeek/OpenAI-compatible Chat Completions；开发/测试可用 mock
 
 ## 快速启动
 
@@ -211,40 +211,44 @@ docs/pilot-readiness-check.md
 
 ## AI 模型配置
 
-默认 `.env.example` 使用 mock provider，不会调用外部模型。接入真实模型时配置：
+默认 `.env.example` 使用 mock provider，不会调用外部模型。当前真实模型验收配置优先使用 Codex GPT-5.5，并在 10 秒内无法返回时降级到 DeepSeek/OpenAI-compatible provider：
 
 ```text
-# mock | deepseek | openai-compatible | codex
-AI_PROVIDER_NAME=mock
-AI_BASE_URL=https://api.deepseek.com/v1
-AI_MODEL_NAME=deepseek-chat
-AI_API_KEY=
-AI_TEMPERATURE=0.3
-AI_MAX_TOKENS=600
-AI_TIMEOUT_SECONDS=30
-
 # 当前默认研究一预实验单组；后续研究二可改为 grouped
 STUDY_MODE=pilot_single
 SELF_REGISTRATION_ENABLED=true
 PARTICIPANT_CODE_PREFIX=P
+
+# mock | deepseek | openai-compatible | codex
+AI_PROVIDER_NAME=codex
+AI_BASE_URL=https://api.deepseek.com/v1
+AI_MODEL_NAME=gpt-5.5
+AI_API_KEY=
+AI_TEMPERATURE=0.3
+AI_MAX_TOKENS=600
+AI_TIMEOUT_SECONDS=10
 
 # AI_PROVIDER_NAME=codex 时使用；Codex CLI 需在服务器上预先安装并登录
 CODEX_COMMAND=codex app-server
 CODEX_APPROVAL_POLICY=never
 CODEX_SANDBOX=read-only
 CODEX_REASONING_EFFORT=low
+CODEX_READ_TIMEOUT_SECONDS=2
+CODEX_TURN_TIMEOUT_SECONDS=10
 
-# Optional fallback used only when the primary AI provider fails.
-AI_FALLBACK_ENABLED=false
+# Fallback used when Codex fails or misses the 10-second response SLA.
+AI_FALLBACK_ENABLED=true
 AI_FALLBACK_PROVIDER_NAME=deepseek
 AI_FALLBACK_BASE_URL=https://api.deepseek.com
 AI_FALLBACK_MODEL_NAME=deepseek-chat
 AI_FALLBACK_API_KEY=
 AI_FALLBACK_MAX_TOKENS=800
-AI_FALLBACK_TIMEOUT_SECONDS=45
+AI_FALLBACK_TIMEOUT_SECONDS=10
 ```
 
-真实模型调用可能产生外部 API 或 Codex 账号费用。API Key 只应保存在本地 `.env` 或部署环境变量中。Codex 模式会把每个 Experiment Session 的 Codex thread id 存入数据库，以便浏览器刷新或后端重启后继续同一段对话。
+真实模型调用可能产生外部 API 或 Codex 账号费用。API Key 只应保存在本地 `.env` 或部署环境变量中。当前 AI 对话决策是 promptless：后端不应向模型发送系统提示词、developer/base instruction 或话题引导。Codex 模式会把每个 Experiment Session 的 Codex thread id 存入数据库，以便浏览器刷新或后端重启后继续同一段对话。
+
+Codex 原生提速优先路径：当前机器 `codex-cli 0.132.0` 已可用，`~/.codex/config.toml` 默认模型为 `gpt-5.5`，因此 provider 配置应优先使用 `AI_MODEL_NAME=gpt-5.5`。当前每轮直接启动 `codex app-server` 会有冷启动成本；更快的原生路径是使用 Codex app-server daemon + `codex app-server proxy` 复用常驻服务。实测本机 `codex app-server daemon start` 提示缺少 standalone Codex install（需要 Codex installer 管理的 `~/.codex/packages/standalone/current/codex`），所以要启用 daemon/proxy 提速，需要先安装 standalone Codex；在此之前仍应保留 10 秒 SLA 和 DeepSeek 降级。
 
 ## 目录结构
 
