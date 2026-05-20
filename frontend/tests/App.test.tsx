@@ -199,6 +199,15 @@ function jsonResponse(body: unknown) {
   } as Response);
 }
 
+function errorResponse(detail: unknown, status = 500) {
+  return Promise.resolve({
+    ok: false,
+    status,
+    json: async () => ({ detail }),
+    text: async () => JSON.stringify({ detail })
+  } as Response);
+}
+
 describe('Mentor Echo 前端 UI', () => {
   beforeEach(() => {
     vi.stubGlobal('URL', {
@@ -332,6 +341,27 @@ describe('Mentor Echo 前端 UI', () => {
         text: async () => ''
       } as Response
     );
+  });
+
+  it('未知服务端错误不会把内部实现文本显示给被试', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input).replace(baseUrl, '');
+      if (url === '/api/health') return jsonResponse({ app: 'ok', database: { ok: true } });
+      if (url === '/api/participant/entry') {
+        return errorResponse('provider thread_id failed in grouped prompt mode');
+      }
+      return Promise.reject(new Error(`Unexpected request ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '我是被试，进入实验' }));
+    fireEvent.change(screen.getByLabelText('被试编号'), { target: { value: 'PILOT001' } });
+    fireEvent.click(screen.getByRole('button', { name: '进入实验' }));
+
+    expect(await screen.findByText('操作失败，请稍后重试或联系研究者。')).toBeInTheDocument();
+    expect(screen.queryByText(/provider|thread_id|grouped|prompt/)).not.toBeInTheDocument();
   });
 
   it('研究者登录后显示仪表盘，并在导出前提示敏感原始聊天', async () => {
