@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AdminStatusRow,
   DialogueFinishDecision,
@@ -951,6 +951,8 @@ function DialoguePage({
 }) {
   const progress = dialogue.progress;
   const [elapsedSeconds, setElapsedSeconds] = useState(progress.dialogue_elapsed_seconds);
+  const [visibleReminder, setVisibleReminder] = useState<string | null>(null);
+  const shownReminderKeys = useRef<string[]>([]);
 
   useEffect(() => {
     setElapsedSeconds(progress.dialogue_elapsed_seconds);
@@ -959,6 +961,31 @@ function DialoguePage({
     }, 1000);
     return () => window.clearInterval(timer);
   }, [progress.dialogue_elapsed_seconds]);
+
+  const reminderKey = useMemo(() => {
+    if (!progress.reminder_due) return null;
+    return [
+      dialogue.experiment_session_id,
+      progress.participant_turn_count,
+      dialogue.messages.length,
+      progress.reminder_text
+    ].join(':');
+  }, [
+    dialogue.experiment_session_id,
+    dialogue.messages.length,
+    progress.participant_turn_count,
+    progress.reminder_due,
+    progress.reminder_text
+  ]);
+
+  useEffect(() => {
+    if (!reminderKey || shownReminderKeys.current.includes(reminderKey)) return;
+    const reminderText = compactReminderText(progress.reminder_text);
+    setVisibleReminder(reminderText);
+    shownReminderKeys.current = [...shownReminderKeys.current, reminderKey].slice(-8);
+    const timer = window.setTimeout(() => setVisibleReminder(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [progress.reminder_text, reminderKey]);
 
   const elapsed = formatDuration(elapsedSeconds);
   const required = formatDuration(progress.required_elapsed_seconds);
@@ -969,7 +996,7 @@ function DialoguePage({
     progress.forced_finish_reason === 'max_turns'
       ? '已达到 12 个有效用户回合上限。'
       : progress.forced_finish_reason === 'max_duration'
-        ? '已达到 20 分钟对话上限。'
+        ? `已达到 ${maximum} 对话上限。`
         : progress.forced_finish_reason === 'continue_related_limit'
           ? '相关点延伸讨论已达到本分支上限。'
           : '对话已达到结束条件。';
@@ -995,12 +1022,13 @@ function DialoguePage({
           返回首页
         </button>
       </div>
-      <div className="topic-banner" role="note">
-        当前对话主题：专业选择与未来升学/就业方向
-      </div>
-      {progress.reminder_due ? <div className="topic-reminder">{progress.reminder_text}</div> : null}
       <div className="dialogue-shell">
         <div className="chat-panel">
+          {visibleReminder ? (
+            <div className="topic-reminder" role="status" aria-live="polite">
+              {visibleReminder}
+            </div>
+          ) : null}
           <div className="chat-window" aria-live="polite">
             {visibleMessages.length === 0 ? (
               <p className="empty-state">消息会显示在这里。</p>
@@ -1088,6 +1116,12 @@ function DialoguePage({
   );
 }
 
+function compactReminderText(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.includes('请确认接下来的提问')) return '请继续围绕专业选择与未来方向交流。';
+  return trimmed;
+}
+
 function MarkdownContent({ text }: { text: string }) {
   const lines = text.split(/\r?\n/);
   const nodes: ReactNode[] = [];
@@ -1099,7 +1133,14 @@ function MarkdownContent({ text }: { text: string }) {
 
   function flushParagraph() {
     if (paragraph.length === 0) return;
-    nodes.push(<p key={`p-${nodes.length}`}>{parseInlineMarkdown(paragraph.join(' '))}</p>);
+    nodes.push(
+      <p key={`p-${nodes.length}`}>
+        {paragraph.flatMap((line, index) => {
+          const parsed = parseInlineMarkdown(line);
+          return index === 0 ? parsed : [<br key={`br-${index}`} />, ...parsed];
+        })}
+      </p>
+    );
     paragraph = [];
   }
 

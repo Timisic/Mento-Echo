@@ -82,7 +82,7 @@ export type DialogueState = {
   experiment_session_id: string;
   participant_code: string;
   group: 'pilot' | 'experiment' | 'control';
-  system_prompt_version: string;
+  system_prompt_version: string | null;
   status: string;
   progress: {
     participant_turn_count: number;

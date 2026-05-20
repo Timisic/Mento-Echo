@@ -4,7 +4,7 @@ from datetime import timedelta
 
 import pytest
 
-from app.ai_provider import AIProviderError, OpenAICompatibleProvider, prompt_for_group
+from app.ai_provider import AIProviderError, CodexAppServerProvider, OpenAICompatibleProvider, prompt_for_group
 from app.config import Settings
 from app.models import ChatMessage, ExperimentSession
 from app.services import DialogueService
@@ -71,7 +71,7 @@ def test_prompt_selection_message_persistence_and_metadata(client, admin_headers
 
     state = client.get(f"/api/participant/sessions/{session_id}/dialogue")
     assert state.status_code == 200
-    assert state.json()["system_prompt_version"] == prompt_for_group("pilot").version
+    assert state.json()["system_prompt_version"] is None
     send = client.post(
         f"/api/participant/sessions/{session_id}/dialogue/messages",
         json={"content": "我在考虑是否继续这个专业。"},
@@ -81,14 +81,18 @@ def test_prompt_selection_message_persistence_and_metadata(client, admin_headers
     body = send.json()
     assert body["participant_message"]["role"] == "participant"
     assert body["assistant_message"]["role"] == "assistant"
-    assert body["assistant_message"]["provider_name"] == "mock"
-    assert body["assistant_message"]["model_name"] == "mock-mentor-echo"
-    assert body["assistant_message"]["system_prompt_version"] == "study_one_pilot_major_choice_v1"
+    assert body["assistant_message"]["provider_name"] is None
+    assert body["assistant_message"]["model_name"] is None
+    assert body["assistant_message"]["system_prompt_version"] is None
+    assert body["assistant_message"]["generation_params"] is None
     assert body["progress"]["participant_turn_count"] == 1
     assert "api_key" not in str(body).lower()
 
     messages = db_session.query(ChatMessage).filter_by(experiment_session_id=session_id).order_by(ChatMessage.message_index).all()
     assert [message.role for message in messages] == ["participant", "assistant"]
+    assert messages[1].provider_name == "mock"
+    assert messages[1].model_name == "mock-mentor-echo"
+    assert messages[1].system_prompt_version == "study_one_pilot_major_choice_v1"
     assert messages[1].generation_params["temperature"] == 0.3
 
 
@@ -133,6 +137,110 @@ def test_dialogue_provider_thread_id_is_reused_for_session(client, admin_headers
     assert session is not None
     assert session.dialogue_model_thread_id == "thread-1"
     assert session.dialogue_model_turn_id == "turn-2"
+
+
+def test_dialogue_falls_back_without_exposing_provider_to_participant(client, admin_headers, db_session, monkeypatch):
+    class PrimaryProvider:
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            raise AIProviderError("codex_timeout", "primary timed out")
+
+    class FallbackProvider:
+        def __init__(self, settings):
+            self.settings = settings
+
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            from app.ai_provider import AIProviderResult
+            from app.services import now_utc
+
+            timestamp = now_utc()
+            return AIProviderResult(
+                content="fallback response",
+                provider_name=self.settings.ai_provider_name,
+                model_name=self.settings.ai_model_name,
+                generation_params={"temperature": self.settings.ai_temperature},
+                request_started_at=timestamp,
+                response_completed_at=timestamp,
+                duration_ms=3,
+            )
+
+    def provider_factory(settings):
+        if settings.ai_provider_name == "codex":
+            return PrimaryProvider()
+        return FallbackProvider(settings)
+
+    monkeypatch.setattr("app.services.create_ai_provider", provider_factory)
+    monkeypatch.setattr(
+        "app.services.get_settings",
+        lambda: Settings(
+            AI_PROVIDER_NAME="codex",
+            AI_MODEL_NAME="gpt-5.5",
+            AI_FALLBACK_ENABLED=True,
+            AI_FALLBACK_PROVIDER_NAME="deepseek",
+            AI_FALLBACK_MODEL_NAME="deepseek-chat",
+            AI_FALLBACK_API_KEY="test-key",
+        ),
+    )
+    session_id = prepared_session(client, admin_headers, code="DFALLBACK", group="experiment")
+
+    response = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": "我想继续聊专业方向。"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["assistant_message"]["content"] == "fallback response"
+    assert body["assistant_message"]["provider_name"] is None
+    assert body["assistant_message"]["model_name"] is None
+    assert body["assistant_message"]["generation_params"] is None
+
+    messages = db_session.query(ChatMessage).filter_by(experiment_session_id=session_id).order_by(ChatMessage.message_index).all()
+    assert messages[1].provider_name == "deepseek"
+    assert messages[1].model_name == "deepseek-chat"
+    assert messages[1].generation_params["fallback_triggered"] is True
+    assert messages[1].generation_params["primary_error_code"] == "codex_timeout"
+
+
+def test_codex_retryable_error_notification_does_not_fail_turn():
+    class FakeStream:
+        def __init__(self, lines: list[str]):
+            self.lines = lines
+
+        def readline(self) -> str:
+            return self.lines.pop(0) if self.lines else ""
+
+    class FakeKey:
+        def __init__(self, stream: FakeStream):
+            self.fileobj = stream
+            self.data = "stdout"
+
+    class FakeSelector:
+        def __init__(self, stream: FakeStream):
+            self.key = FakeKey(stream)
+
+        def select(self, timeout: float):
+            return [(self.key, None)] if self.key.fileobj.lines else []
+
+    class FakeProcess:
+        def poll(self):
+            return None
+
+    stream = FakeStream(
+        [
+            '{"method":"error","params":{"willRetry":true,"threadId":"thread-1","turnId":"turn-1","error":{"message":"Reconnecting..."}}}\n',
+            '{"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","delta":"ok"}}\n',
+            '{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}}\n',
+        ]
+    )
+    provider = CodexAppServerProvider(Settings(AI_PROVIDER_NAME="codex"))
+
+    assert provider._read_turn_content(  # type: ignore[arg-type]
+        FakeProcess(),
+        FakeSelector(stream),
+        thread_id="thread-1",
+        turn_id="turn-1",
+        timeout=1,
+    ) == "ok"
 
 
 def test_completion_eligibility_requires_6_effective_turns_and_10_minutes(client, admin_headers, db_session):

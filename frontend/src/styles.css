@@ -538,6 +538,7 @@ li {
 }
 
 .chat-panel {
+  position: relative;
   grid-template-rows: minmax(0, 1fr) auto;
   min-block-size: 0;
 }
@@ -560,22 +561,34 @@ li {
   color: var(--text);
 }
 
-.topic-banner,
 .topic-reminder {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.72rem 0.9rem;
-  font-weight: 750;
+  position: absolute;
+  z-index: 2;
+  inset-block-start: var(--space-md);
+  inset-inline: var(--space-md) auto;
+  max-inline-size: min(34rem, calc(100% - 2rem));
+  border: 1px solid oklch(84% 0.055 82);
+  border-radius: 999px;
+  background: oklch(98% 0.018 82 / 0.96);
+  color: var(--text);
+  padding: 0.48rem 0.78rem;
+  box-shadow: 0 10px 24px oklch(35% 0.04 245 / 0.1);
+  font-size: 0.9rem;
+  font-weight: 650;
+  pointer-events: none;
+  animation: reminder-enter 180ms ease-out;
 }
 
-.topic-banner {
-  background: var(--surface-strong);
-  color: var(--text);
-}
+@keyframes reminder-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 
-.topic-reminder {
-  background: var(--warning-soft);
-  color: var(--text);
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .finish-choices {
@@ -614,6 +627,7 @@ li {
   border-radius: 8px;
   padding: 0.78rem 0.92rem;
   background: var(--surface);
+  overflow-wrap: anywhere;
 }
 
 .message.participant {
@@ -652,6 +666,19 @@ li {
   margin-block: 0 var(--space-sm);
 }
 
+.markdown-content p,
+.markdown-content li {
+  line-height: 1.72;
+  white-space: normal;
+}
+
+.markdown-content p + p,
+.markdown-content ul + p,
+.markdown-content ol + p,
+.markdown-content pre + p {
+  margin-block-start: 0.12rem;
+}
+
 .markdown-content > :last-child {
   margin-block-end: 0;
 }
@@ -672,6 +699,8 @@ li {
 .markdown-content ul,
 .markdown-content ol {
   padding-inline-start: 1.2rem;
+  display: grid;
+  gap: 0.2rem;
 }
 
 .markdown-content code {

@@ -371,14 +371,14 @@ def _chat_message_response(message: ChatMessage) -> ChatMessageResponse:
         message_index=message.message_index,
         role=message.role,
         content=message.content,
-        provider_name=message.provider_name,
-        model_name=message.model_name,
-        system_prompt_version=message.system_prompt_version,
-        generation_params=message.generation_params,
-        duration_ms=message.duration_ms,
-        retry_count=message.retry_count,
-        error_code=message.error_code,
-        error_message_sanitized=message.error_message_sanitized,
+        provider_name=None,
+        model_name=None,
+        system_prompt_version=None,
+        generation_params=None,
+        duration_ms=None,
+        retry_count=None,
+        error_code=None,
+        error_message_sanitized=None,
         created_at=message.created_at,
     )
 
@@ -495,12 +495,11 @@ def get_dialogue(session_id: str, db: Session = Depends(get_session)) -> Dialogu
     messages = DialogueService.start_or_get(db, session=session, participant=participant)
     progress = DialogueService.update_progress(db, session=session)
     db.commit()
-    prompt = prompt_for_group(session.group or "")
     return DialogueStateResponse(
         experiment_session_id=session.id,
         participant_code=participant.participant_code,
         group=session.group,  # type: ignore[arg-type]
-        system_prompt_version=prompt.version,
+        system_prompt_version=None,
         status=session.status,
         progress=_progress_response(progress),
         messages=[_chat_message_response(message) for message in messages],

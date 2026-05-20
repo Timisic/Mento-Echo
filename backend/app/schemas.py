@@ -277,7 +277,7 @@ class DialogueStateResponse(BaseModel):
     experiment_session_id: str
     participant_code: str
     group: ExperimentGroup
-    system_prompt_version: str
+    system_prompt_version: str | None
     status: SessionStatus
     progress: DialogueProgressResponse
     messages: list[ChatMessageResponse]

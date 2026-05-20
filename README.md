@@ -232,6 +232,16 @@ PARTICIPANT_CODE_PREFIX=P
 CODEX_COMMAND=codex app-server
 CODEX_APPROVAL_POLICY=never
 CODEX_SANDBOX=read-only
+CODEX_REASONING_EFFORT=low
+
+# Optional fallback used only when the primary AI provider fails.
+AI_FALLBACK_ENABLED=false
+AI_FALLBACK_PROVIDER_NAME=deepseek
+AI_FALLBACK_BASE_URL=https://api.deepseek.com
+AI_FALLBACK_MODEL_NAME=deepseek-chat
+AI_FALLBACK_API_KEY=
+AI_FALLBACK_MAX_TOKENS=800
+AI_FALLBACK_TIMEOUT_SECONDS=45
 ```
 
 真实模型调用可能产生外部 API 或 Codex 账号费用。API Key 只应保存在本地 `.env` 或部署环境变量中。Codex 模式会把每个 Experiment Session 的 Codex thread id 存入数据库，以便浏览器刷新或后端重启后继续同一段对话。

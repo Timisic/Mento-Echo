@@ -9,8 +9,8 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.ai_provider import AIProviderError, create_ai_provider, prompt_for_group
-from app.config import get_settings
+from app.ai_provider import AIProviderError, AIProviderResult, create_ai_provider, prompt_for_group
+from app.config import Settings, get_settings
 from app.models import (
     AuditLog,
     BehaviorEvent,
@@ -731,12 +731,11 @@ class DialogueService:
     MIN_PARTICIPANT_TURNS = 6
     MIN_ELAPSED_SECONDS = 10 * 60
     MAX_PARTICIPANT_TURNS = 12
-    MAX_ELAPSED_SECONDS = 20 * 60
+    MAX_ELAPSED_SECONDS = 60 * 60
     CONTINUE_RELATED_MIN_EXTRA_TURNS = 2
     CONTINUE_RELATED_MAX_EXTRA_TURNS = 4
-    REMINDER_TURN_INTERVAL = 3
-    REMINDER_SECONDS = 5 * 60
-    REMINDER_TEXT = "请确认接下来的提问仍围绕专业选择、未来方向、升学或就业展开。"
+    REMINDER_TURN_INTERVAL = 4
+    REMINDER_TEXT = "请继续围绕专业选择与未来方向交流。"
     _NON_SUBSTANTIVE_TURNS = {
         "嗯",
         "嗯嗯",
@@ -814,11 +813,11 @@ class DialogueService:
         history = DialogueService._provider_history(db, session_id=session.id)
         prompt = prompt_for_group(session.group or "")
         settings = get_settings()
-        provider = create_ai_provider(settings)
         try:
-            result = provider.generate(
+            result, primary_error = DialogueService._generate_with_fallback(
+                settings=settings,
                 system_prompt=prompt.system_prompt,
-                messages=history,
+                history=history,
                 provider_thread_id=session.dialogue_model_thread_id,
             )
             if result.provider_thread_id:
@@ -826,6 +825,10 @@ class DialogueService:
             if result.provider_turn_id:
                 session.dialogue_model_turn_id = result.provider_turn_id
             generation_params = dict(result.generation_params)
+            if primary_error is not None:
+                generation_params["fallback_triggered"] = True
+                generation_params["primary_error_code"] = primary_error.code
+                generation_params["primary_error_message_sanitized"] = primary_error.message
             if result.provider_thread_id:
                 generation_params["provider_thread_id"] = result.provider_thread_id
             if result.provider_turn_id:
@@ -845,6 +848,23 @@ class DialogueService:
                 duration_ms=result.duration_ms,
                 retry_count=result.retry_count,
             )
+            if primary_error is not None:
+                log_behavior(
+                    db,
+                    event_type="ai_fallback_used",
+                    participant=participant,
+                    session=session,
+                    stage=session.status,
+                    metadata={
+                        "primary_provider_name": settings.ai_provider_name,
+                        "primary_model_name": settings.ai_model_name,
+                        "fallback_provider_name": result.provider_name,
+                        "fallback_model_name": result.model_name,
+                        "system_prompt_version": prompt.version,
+                        "primary_error_code": primary_error.code,
+                        "primary_error_message_sanitized": primary_error.message,
+                    },
+                )
         except AIProviderError as exc:
             timestamp = now_utc()
             assistant_message = ChatMessage(
@@ -932,8 +952,7 @@ class DialogueService:
         met_min_turns = participant_turns >= DialogueService.MIN_PARTICIPANT_TURNS
         met_min_duration = elapsed >= DialogueService.MIN_ELAPSED_SECONDS
         forced_finish_reason = DialogueService._forced_finish_reason(session, participant_turns, elapsed)
-        if forced_finish_reason:
-            session.dialogue_forced_finish_reason = forced_finish_reason
+        session.dialogue_forced_finish_reason = forced_finish_reason
 
         finish_prompt_visible = DialogueService._finish_prompt_visible(
             session,
@@ -955,9 +974,7 @@ class DialogueService:
             )
         elif not eligible and session.status == "chat_eligible_to_finish":
             session.status = "chat_in_progress"
-        reminder_due = (participant_turns > 0 and participant_turns % DialogueService.REMINDER_TURN_INTERVAL == 0) or (
-            elapsed >= DialogueService.REMINDER_SECONDS
-        )
+        reminder_due = participant_turns > 0 and participant_turns % DialogueService.REMINDER_TURN_INTERVAL == 0
         return {
             "participant_turn_count": int(participant_turns),
             "dialogue_elapsed_seconds": elapsed,
@@ -1063,6 +1080,72 @@ class DialogueService:
             elif message.role == "assistant" and not message.error_code:
                 history.append({"role": "assistant", "content": message.content})
         return history
+
+    @staticmethod
+    def _generate_with_fallback(
+        *,
+        settings: Settings,
+        system_prompt: str,
+        history: list[dict[str, str]],
+        provider_thread_id: str | None,
+    ) -> tuple[AIProviderResult, AIProviderError | None]:
+        try:
+            return (
+                create_ai_provider(settings).generate(
+                    system_prompt=system_prompt,
+                    messages=history,
+                    provider_thread_id=provider_thread_id,
+                ),
+                None,
+            )
+        except AIProviderError as primary_error:
+            fallback_settings = DialogueService._fallback_settings(settings)
+            if fallback_settings is None:
+                raise
+            try:
+                return (
+                    create_ai_provider(fallback_settings).generate(
+                        system_prompt=system_prompt,
+                        messages=history,
+                        provider_thread_id=None,
+                    ),
+                    primary_error,
+                )
+            except AIProviderError as fallback_error:
+                raise AIProviderError(
+                    "ai_fallback_failed",
+                    (
+                        f"primary {primary_error.code}: {primary_error.message}; "
+                        f"fallback {fallback_error.code}: {fallback_error.message}"
+                    ),
+                ) from fallback_error
+
+    @staticmethod
+    def _fallback_settings(settings: Settings) -> Settings | None:
+        if not settings.ai_fallback_enabled:
+            return None
+        provider_name = settings.ai_fallback_provider_name.strip()
+        if not provider_name:
+            return None
+        api_key = settings.ai_fallback_api_key or settings.ai_api_key
+        if provider_name not in {"mock", "codex"} and not api_key:
+            return None
+        return Settings(
+            AI_PROVIDER_NAME=provider_name,
+            AI_BASE_URL=settings.ai_fallback_base_url,
+            AI_API_KEY=api_key,
+            AI_MODEL_NAME=settings.ai_fallback_model_name,
+            AI_TEMPERATURE=settings.ai_fallback_temperature,
+            AI_MAX_TOKENS=settings.ai_fallback_max_tokens,
+            AI_TIMEOUT_SECONDS=settings.ai_fallback_timeout_seconds,
+            CODEX_COMMAND=settings.codex_command,
+            CODEX_APPROVAL_POLICY=settings.codex_approval_policy,
+            CODEX_SANDBOX=settings.codex_sandbox,
+            CODEX_REASONING_EFFORT=settings.codex_reasoning_effort,
+            CODEX_READ_TIMEOUT_SECONDS=settings.codex_read_timeout_seconds,
+            CODEX_TURN_TIMEOUT_SECONDS=settings.codex_turn_timeout_seconds,
+            CODEX_CWD=settings.codex_cwd,
+        )
 
     @staticmethod
     def normalize_turn_content(content: str) -> str:

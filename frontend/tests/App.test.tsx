@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 
@@ -115,7 +115,7 @@ const dialogueState = {
   experiment_session_id: 'session-1',
   participant_code: 'PILOT001',
   group: 'experiment',
-  system_prompt_version: 'major_choice_dialogue_protocol_v2',
+  system_prompt_version: null,
   status: 'chat_in_progress',
   progress: {
     participant_turn_count: 3,
@@ -133,7 +133,7 @@ const dialogueState = {
     finish_decision: null,
     continue_until_turn_count: null,
     reminder_due: true,
-    reminder_text: '请确认接下来的提问仍围绕专业选择、未来方向、升学或就业展开。'
+    reminder_text: '请继续围绕专业选择与未来方向交流。'
   },
   messages: [
     {
@@ -141,10 +141,10 @@ const dialogueState = {
       message_index: 1,
       role: 'assistant',
       content:
-        '**你好**，请从你愿意分享的内容开始。\n\n- 列出一个想法\n1. 再补充一个步骤\n\n可以参考[资料](https://example.com/guide)，不要打开[危险](javascript:alert(1))。\n\n```ts\nconst choice = \"major\";\n```\n\n<script>alert(\"xss\")</script>',
-      provider_name: 'mock',
-      model_name: 'mock-model',
-      system_prompt_version: 'major_choice_dialogue_protocol_v2',
+        '**你好**，请从你愿意分享的内容开始。\n这是一行补充说明。\n\n- 列出一个想法\n1. 再补充一个步骤\n\n可以参考[资料](https://example.com/guide)，不要打开[危险](javascript:alert(1))。\n\n```ts\nconst choice = \"major\";\n```\n\n<script>alert(\"xss\")</script>',
+      provider_name: null,
+      model_name: null,
+      system_prompt_version: null,
       generation_params: null,
       duration_ms: 12,
       retry_count: 0,
@@ -219,6 +219,7 @@ describe('Mentor Echo 前端 UI', () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -312,8 +313,10 @@ describe('Mentor Echo 前端 UI', () => {
     fireEvent.click(screen.getByRole('button', { name: '开始 AI 对话' }));
 
     expect(await screen.findByRole('heading', { name: '围绕专业与未来方向展开对话' })).toBeInTheDocument();
-    expect(screen.getByText('当前对话主题：专业选择与未来升学/就业方向')).toBeInTheDocument();
-    expect(screen.getByText('请确认接下来的提问仍围绕专业选择、未来方向、升学或就业展开。')).toBeInTheDocument();
+    expect(screen.queryByText('专业选择与未来升学/就业方向')).not.toBeInTheDocument();
+    expect(container.querySelector('.topic-banner')).toBeNull();
+    expect(await screen.findByText('请继续围绕专业选择与未来方向交流。')).toBeInTheDocument();
+    expect(screen.queryByText('请确认接下来的提问仍围绕专业选择、未来方向、升学或就业展开。')).not.toBeInTheDocument();
     expect(screen.getByText('消息数：3 / 6')).toBeInTheDocument();
     expect(screen.getByText('对话时长：04:21 / 10:00')).toBeInTheDocument();
     expect(screen.getByText('尚未达到完成条件')).toBeInTheDocument();
@@ -321,6 +324,7 @@ describe('Mentor Echo 前端 UI', () => {
     expect(screen.queryByText('major_choice_dialogue_protocol_v2')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: '资料' })).toHaveAttribute('href', 'https://example.com/guide');
     expect(screen.queryByRole('link', { name: '危险' })).not.toBeInTheDocument();
+    expect(container.querySelector('.markdown-content p br')).not.toBeNull();
     expect(container.querySelector('.markdown-content pre code')?.textContent).toBe('const choice = "major";');
     expect(container.querySelector('.markdown-content script')).toBeNull();
     expect(screen.queryByText('experiment_identity_dialogue_v1')).not.toBeInTheDocument();
@@ -341,6 +345,44 @@ describe('Mentor Echo 前端 UI', () => {
         text: async () => ''
       } as Response
     );
+  });
+
+  it('对话主题提醒短暂显示后自动收起，不占用聊天布局空间', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const activeSession = {
+      ...session,
+      status: 'chat_in_progress',
+      group: 'pilot',
+      assignment_source: 'pilot_single',
+      assignment_locked: true
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input).replace(baseUrl, '');
+      if (url === '/api/health') return jsonResponse({ app: 'ok', database: { ok: true } });
+      if (url === '/api/participant/entry') return jsonResponse({ accepted: true, message: 'ok', session: activeSession });
+      if (url === '/api/participant/sessions/session-1/dialogue') return jsonResponse(dialogueState);
+      return Promise.reject(new Error(`Unexpected request ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '我是被试，进入实验' }));
+    fireEvent.change(screen.getByLabelText('被试编号'), { target: { value: 'PILOT001' } });
+    fireEvent.click(screen.getByRole('button', { name: '进入实验' }));
+
+    expect(await screen.findByText('请继续围绕专业选择与未来方向交流。')).toBeInTheDocument();
+    expect(container.querySelector('.chat-panel > .topic-reminder')).not.toBeNull();
+    expect(container.querySelector('.dialogue-layout > .topic-reminder')).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(4600);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('请继续围绕专业选择与未来方向交流。')).not.toBeInTheDocument();
+    });
+    expect(container.querySelector('.topic-banner')).toBeNull();
   });
 
   it('未知服务端错误不会把内部实现文本显示给被试', async () => {

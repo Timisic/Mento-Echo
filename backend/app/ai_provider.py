@@ -21,6 +21,7 @@ EXPERIMENT_SYSTEM_PROMPT = """You are the experiment-group AI dialogue partner f
 
 Style:
 - Be warm, friendly, sincere, patient, and concrete.
+- Keep each reply concise: 2-4 short sentences, then at most one focused question.
 - Stay non-directive: help the participant organize thoughts, tradeoffs, feelings,
   uncertainties, and next verification actions without deciding for them.
 - Do not diagnose, treat, pressure, or present yourself as a counselor.
@@ -54,6 +55,7 @@ PILOT_SYSTEM_PROMPT = """You are the Study One Pilot AI dialogue partner for Men
 
 Style:
 - Be warm, friendly, sincere, patient, and concrete.
+- Keep each reply concise: 2-4 short sentences, then at most one focused question.
 - Stay non-directive: help the participant organize thoughts, tradeoffs, feelings,
   uncertainties, and next verification actions without deciding for them.
 - Do not diagnose, treat, pressure, or present yourself as a counselor.
@@ -250,6 +252,7 @@ class CodexAppServerProvider:
                     "cwd": cwd,
                     "input": [{"type": "text", "text": latest_user}],
                     "model": self.settings.ai_model_name,
+                    "effort": self.settings.codex_reasoning_effort,
                     "approvalPolicy": self.settings.codex_approval_policy,
                 },
             )
@@ -285,6 +288,7 @@ class CodexAppServerProvider:
                 "codex_command": command,
                 "approval_policy": self.settings.codex_approval_policy,
                 "sandbox": self.settings.codex_sandbox,
+                "reasoning_effort": self.settings.codex_reasoning_effort,
             },
             request_started_at=started,
             response_completed_at=completed,
@@ -380,6 +384,10 @@ class CodexAppServerProvider:
                             raise AIProviderError("codex_turn_failed", sanitize_error_message(str(turn.get("error") or turn)))
                         return "".join(content_parts)
                 if method == "error":
+                    if params.get("willRetry") is True:
+                        stderr_tail.append(sanitize_error_message(str(params)))
+                        stderr_tail = stderr_tail[-5:]
+                        continue
                     raise AIProviderError("codex_protocol_error", sanitize_error_message(str(params)))
             if process.poll() is not None:
                 break
