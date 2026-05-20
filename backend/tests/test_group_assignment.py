@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from app.config import get_settings
 from tests.conftest import import_participants
 
 
-def test_imported_assignment_is_applied_and_visible_in_admin_status(client, admin_headers):
+def test_pilot_single_assignment_ignores_grouping_and_is_visible_in_admin_status(client, admin_headers):
     assert import_participants(
         client, admin_headers, [{"participant_code": "P400", "assigned_group": "experiment"}]
     ).status_code == 200
@@ -13,17 +14,33 @@ def test_imported_assignment_is_applied_and_visible_in_admin_status(client, admi
         f"/api/participant/sessions/{session['experiment_session_id']}/assignment"
     ).json()
 
-    assert assignment["group"] == "experiment"
-    assert assignment["assignment_source"] == "imported"
+    assert assignment["group"] == "pilot"
+    assert assignment["assignment_source"] == "pilot_single"
     assert assignment["assignment_locked"] is True
 
     status = client.get("/api/admin/status", headers=admin_headers).json()["participants"][0]
-    assert status["group"] == "experiment"
-    assert status["assignment_source"] == "imported"
+    assert status["group"] == "pilot"
+    assert status["assignment_source"] == "pilot_single"
     assert status["assignment_locked"] is True
 
 
-def test_blank_assignment_randomizes_once_and_does_not_rerandomize(client, admin_headers):
+def test_grouped_mode_imported_assignment_is_applied(client, admin_headers, monkeypatch):
+    monkeypatch.setenv("STUDY_MODE", "grouped")
+    get_settings.cache_clear()
+    assert import_participants(
+        client, admin_headers, [{"participant_code": "P450", "assigned_group": "experiment"}]
+    ).status_code == 200
+    session = client.post("/api/participant/entry", json={"participant_code": "P450"}).json()["session"]
+
+    assignment = client.post(f"/api/participant/sessions/{session['experiment_session_id']}/assignment").json()
+
+    assert assignment["group"] == "experiment"
+    assert assignment["assignment_source"] == "imported"
+
+
+def test_grouped_mode_blank_assignment_randomizes_once_and_does_not_rerandomize(client, admin_headers, monkeypatch):
+    monkeypatch.setenv("STUDY_MODE", "grouped")
+    get_settings.cache_clear()
     assert import_participants(
         client, admin_headers, [{"participant_code": "P500", "assigned_group": ""}]
     ).status_code == 200

@@ -26,7 +26,7 @@ Questionnaire wording, item count, item mapping, scoring rules, and version are 
 - Participant-facing staged flow.
 - Chinese guidance copy before major stages.
 - Questionnaire UI controls, grouping, progress, validation, and locked-submission feedback.
-- AI dialogue UI and completion-progress display.
+- AI dialogue UI and completion-progress display. Markdown rendering.
 - Researcher dashboard layout and operation confirmations.
 - Sensitive export warnings.
 - User-facing loading/error/success states.

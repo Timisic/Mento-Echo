@@ -3,6 +3,26 @@ from __future__ import annotations
 from tests.conftest import import_participants
 
 
+def test_participant_self_registration_generates_sequential_code_with_suffix(client, admin_headers):
+    first = client.post("/api/participant/self-register")
+    second = client.post("/api/participant/self-register")
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    first_body = first.json()
+    second_body = second.json()
+    assert first_body["participant_code"].startswith("P001-")
+    assert second_body["participant_code"].startswith("P002-")
+    assert first_body["session"]["participant_code"] == first_body["participant_code"]
+    assert first_body["session"]["status"] == "not_started"
+
+    status_rows = client.get("/api/admin/status", headers=admin_headers).json()["participants"]
+    assert [row["participant_code"] for row in status_rows] == [
+        first_body["participant_code"],
+        second_body["participant_code"],
+    ]
+
+
 def test_participant_code_entry_accepts_known_rejects_unknown_and_logs_events(client, admin_headers):
     import_response = import_participants(
         client,

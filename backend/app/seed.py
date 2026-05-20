@@ -11,7 +11,7 @@ from app.models import Participant
 from app.services import log_audit, normalize_participant_code, normalize_group
 
 DEFAULT_PARTICIPANT_CODE = "PILOT001"
-DEFAULT_PARTICIPANT_GROUP = "experiment"
+DEFAULT_PARTICIPANT_GROUP = ""
 
 
 def seed_demo_participant() -> Participant:
@@ -29,7 +29,11 @@ def seed_demo_participant() -> Participant:
         )
         created = False
         if participant is None:
-            participant = Participant(participant_code=participant_code, assigned_group=assigned_group)
+            participant = Participant(
+                participant_code=participant_code,
+                assigned_group=assigned_group,
+                registration_source="seed",
+            )
             db.add(participant)
             created = True
         else:

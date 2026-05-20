@@ -2,19 +2,19 @@
 
 ## Problem Statement
 
-The research team needs a stable MVP platform to run an AI dialogue experiment about university students' identity formation. The current requirements exist across research notes, Word questionnaires, converted Markdown, and planning decisions, but there is not yet a working system that can reliably connect participant codes, pre-survey responses, locked group assignment, AI dialogue, post-survey responses, behavior logs, audit logs, and analysis-ready exports.
+The research team needs a stable MVP platform to run Study One Pilot, a single-group AI dialogue pre-experiment about university students' identity formation. The current requirements exist across research notes, Word questionnaires, converted Markdown, and planning decisions, but there is not yet a working system that can reliably connect participant codes, pre-survey responses, locked study mode or future group assignment, AI dialogue, post-survey responses, behavior logs, audit logs, and analysis-ready exports.
 
 From the researcher's perspective, the main risk is not UI polish; it is losing experimental control or data integrity. The platform must prevent duplicate or inconsistent participant sessions, keep group assignment stable after refresh or re-entry, enforce dialogue completion rules, preserve enough AI provider metadata for reproducibility, and export both raw and derived data in a form suitable for statistical analysis and later text coding.
 
 ## Solution
 
-Build a backend-stable, UI-simple MVP with a React frontend, FastAPI backend, and PostgreSQL system of record. Participants enter with researcher-issued participant codes, complete a versioned pre-survey, receive either an imported or first-entry randomized group assignment, complete a text AI dialogue through a configurable OpenAI-compatible provider boundary, complete a versioned post-survey, and are then marked as completed.
+Build a backend-stable, UI-simple MVP with a React frontend, FastAPI backend, and PostgreSQL system of record. Participants enter with researcher-issued or platform-generated participant codes, complete a versioned pre-survey, complete a single-group Study One Pilot AI dialogue through a configurable provider boundary, complete a versioned post-survey, and are then marked as completed. Future grouped studies can re-enable imported or first-entry randomized group assignment.
 
 A single researcher administrator account can import participant codes, monitor per-participant status and key metrics, reset locked stages with an audit reason, exclude sessions, and export a ZIP package containing structured raw and derived research data. The export package includes an analysis-ready wide CSV with one row per participant and clearly separates sensitive raw chat text from routine statistical data.
 
 ## User Stories
 
-1. As a researcher administrator, I want to import participant codes before the study begins, so that only approved participants can enter the experiment.
+1. As a participant, I want the platform to generate a simple anonymous participant code for me, so that I can enter the pre-experiment without a researcher manually issuing a code.
 2. As a researcher administrator, I want imports to reject duplicate participant codes, so that one code cannot accidentally create conflicting experiment sessions.
 3. As a researcher administrator, I want to optionally include a pre-assigned group during import, so that pilot or controlled assignment workflows are supported.
 4. As a researcher administrator, I want participants without imported groups to be randomized by the platform, so that formal experiments can use system assignment.
@@ -22,7 +22,7 @@ A single researcher administrator account can import participant codes, monitor 
 6. As a researcher administrator, I want group assignment to lock after it is determined, so that refresh or re-entry does not change the participant's condition.
 7. As a researcher administrator, I want the platform to store participant codes but not names, so that identity exposure is minimized.
 8. As a researcher administrator, I want to keep any name-to-code mapping outside the platform, so that experimental data remains pseudonymous inside the system.
-9. As a participant, I want to enter the experiment using my participant code, so that the platform can connect my pre-survey, dialogue, and post-survey.
+9. As a participant, I want to enter or resume the experiment using my participant code, so that the platform can connect my pre-survey, dialogue, and post-survey.
 10. As a participant, I want an understandable error if my code is not recognized, so that I know I need to contact the researcher without exposing internal details.
 11. As a participant, I want to resume the same experiment session after refresh or network interruption, so that I do not lose progress.
 12. As a participant, I want the platform to remember my assigned condition after re-entry, so that I do not get reassigned.
@@ -49,8 +49,8 @@ A single researcher administrator account can import participant codes, monitor 
 33. As a researcher administrator, I want key behavior events recorded, so that I can reconstruct what happened in each experiment session.
 34. As a researcher administrator, I want AI call failures, retries, latency, provider name, model name, and prompt version recorded, so that technical issues can be diagnosed.
 35. As a researcher administrator, I do not want high-granularity keystroke or focus analytics in the MVP, so that logging remains privacy-conscious and implementation stays focused.
-36. As a researcher administrator, I want a single configured SOTA model behind an OpenAI-compatible provider boundary, so that the MVP can use one strong model while remaining replaceable later.
-37. As a developer, I want model name, provider endpoint configuration, generation parameters, and system prompt version stored with AI messages, so that model behavior is reproducible.
+36. As a researcher administrator, I want a single configured dialogue model provider selected from `.env`, so that the MVP can use DeepSeek/OpenAI-compatible or local Codex while remaining replaceable later.
+37. As a developer, I want model name, provider endpoint configuration, generation parameters, provider thread id when applicable, and system prompt version stored with AI messages or the experiment session, so that model behavior is reproducible.
 38. As a developer, I want API keys to remain server-side, so that participants and browsers never receive provider secrets.
 39. As a researcher administrator, I want a ZIP export generated from PostgreSQL, so that the export is a reproducible snapshot of the system of record.
 40. As a researcher administrator, I want `participants.csv`, `experiment_sessions.csv`, `questionnaire_responses.csv`, `questionnaire_scores.csv`, `chat_messages.jsonl`, `behavior_events.jsonl`, `audit_logs.csv`, `ai_call_records.csv`, and an export manifest, so that raw and operational data are available for review.
@@ -95,18 +95,18 @@ A single researcher administrator account can import participant codes, monitor 
 
 - Build a Participant Registry module that handles participant import, code normalization, duplicate detection, imported group assignment, and import audit records.
 - Build an Experiment Session module that owns entry, resume, current stage, status transitions, completion checks, duplicate prevention, and reset/exclusion handling.
-- Build a Group Assignment module that supports imported assignment and first-entry randomized assignment, locks assignments permanently after creation, and records `assignment_source`.
+- Build a Study Mode / Group Assignment module that defaults to `pilot_single` for Study One Pilot, records `assignment_source = pilot_single`, and can later support imported assignment and first-entry randomized assignment for grouped studies.
 - Build a Questionnaire Definition module that renders versioned pre-survey and post-survey definitions from structured configuration. The MVP admin UI must not edit questionnaire text, options, or scoring rules.
 - Build a Questionnaire Response module that stores locked raw responses by participant, phase, item, questionnaire version, instrument, and dimension.
 - Build a Questionnaire Scoring module that computes derived pre scores, post scores, attention-check status, and change scores for export. It should be usable without rendering UI.
-- Build an AI Provider module with an OpenAI-compatible interface and server-side API key handling. Business logic should depend on a provider interface rather than a hard-coded vendor call.
+- Build an AI Provider module with a configurable provider boundary. DeepSeek-style providers use OpenAI-compatible chat completions and server-side API key handling; Codex uses local `codex app-server` and persists a thread id per Experiment Session. Business logic should depend on a provider interface rather than a hard-coded vendor call.
 - Build an AI Dialogue module that stores participant messages, assistant messages, prompt version, provider metadata, model name, generation parameters, timing, retry count, and sanitized errors.
 - Enforce dialogue completion eligibility in backend logic using both thresholds: at least 10 participant turns and at least 15 minutes since dialogue start. The AI may summarize but must not determine eligibility.
 - Build a Behavior Event module for key experiment events and technical diagnostics, not high-granularity frontend analytics.
 - Build an Audit Log module for administrator actions such as import, reset, exclusion, configuration change, and export.
 - Build an Export Package module that creates a ZIP archive from PostgreSQL and includes raw tables, derived scoring files, an analysis dataset, raw chat JSONL, behavior events, audit logs, AI call diagnostics, README, and manifest.
 - Clearly separate routine statistical data from sensitive raw chat. `analysis_dataset.csv` must not include raw dialogue text.
-- Provide frontend participant screens for code entry, pre-survey, group-specific dialogue, dialogue completion progress, post-survey, and final completion.
+- Provide frontend participant screens for self-generating or entering a participant code, pre-survey, Study One Pilot dialogue, dialogue completion progress, post-survey, and final completion.
 - Provide frontend admin screens for login, participant import, progress dashboard, participant detail/review, reset/exclusion actions, and export trigger/download.
 - Use a backend API boundary that supports participant flow endpoints, admin flow endpoints, AI dialogue endpoints, questionnaire endpoints, and export endpoints. Keep API details stable enough for future UI redesign.
 - Store enough AI provider metadata for reproducibility: provider name, endpoint configuration key or base URL identity without secrets, model name, available model version/config snapshot, prompt version, generation parameters, request/response timestamps, retry count, and sanitized error data.
@@ -146,6 +146,7 @@ A single researcher administrator account can import participant codes, monitor 
 
 ## Further Notes
 
+- Current implementation defaults to Study One Pilot (`pilot_single`): no participant-visible grouping, platform-generated codes are allowed, and grouping is reserved for a later study.
 - Accepted architectural decisions already establish PostgreSQL as the system of record, React plus FastAPI as the stack, hybrid imported/randomized assignment with locking, versioned questionnaire configuration, and separation between routine analysis data and sensitive raw chat export.
 - Before implementation, confirm the final AI model and provider parameters against current official provider documentation. The PRD intentionally keeps model selection configurable rather than hard-coded.
 - Before implementing questionnaire scoring, use the resolved source-issue decisions and item/scoring map in [`docs/questionnaire-implementation-map.md`](../questionnaire-implementation-map.md): repeated post-survey item text, scale anchor inconsistencies, final dimension/scoring rules, attention checks, and participant-name omission are mapped there.

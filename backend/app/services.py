@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.ai_provider import AIProviderError, OpenAICompatibleProvider, prompt_for_group
+from app.ai_provider import AIProviderError, create_ai_provider, prompt_for_group
 from app.config import get_settings
 from app.models import (
     AuditLog,
@@ -30,7 +30,9 @@ from app.questionnaire_config import (
 )
 from app.schemas import SessionResponse, StatusRow
 
-VALID_GROUPS = {"experiment", "control"}
+VALID_GROUPS = {"pilot", "experiment", "control"}
+GROUPED_STUDY_GROUPS = {"experiment", "control"}
+SELF_CODE_SUFFIX_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 CANONICAL_STATUSES = {
     "not_started",
     "pre_survey_submitted",
@@ -146,7 +148,7 @@ class ParticipantRegistryService:
             if code in seen:
                 errors.append(ImportValidationError(index, code, "duplicate participant_code in import"))
                 continue
-            if group is not None and group not in VALID_GROUPS:
+            if group is not None and group not in GROUPED_STUDY_GROUPS:
                 errors.append(
                     ImportValidationError(index, code, "assigned_group must be experiment, control, or blank")
                 )
@@ -173,7 +175,8 @@ class ParticipantRegistryService:
             )
 
         participants = [
-            Participant(participant_code=code, assigned_group=group) for _, code, group in normalized_rows
+            Participant(participant_code=code, assigned_group=group, registration_source="imported")
+            for _, code, group in normalized_rows
         ]
         db.add_all(participants)
         log_audit(
@@ -188,6 +191,72 @@ class ParticipantRegistryService:
         for participant in participants:
             db.refresh(participant)
         return participants
+
+    @staticmethod
+    def self_register(db: Session) -> tuple[Participant, ExperimentSession]:
+        settings = get_settings()
+        if not settings.self_registration_enabled:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Participant self-registration is disabled")
+        participant = ParticipantRegistryService._create_self_generated_participant(db)
+        session = ExperimentSession(
+            participant_id=participant.id,
+            status="not_started",
+            started_at=now_utc(),
+            last_seen_at=now_utc(),
+        )
+        db.add(session)
+        db.flush()
+        log_behavior(
+            db,
+            event_type="participant_self_registered",
+            participant=participant,
+            session=session,
+            stage="entry",
+            metadata={"registration_source": participant.registration_source},
+        )
+        log_behavior(
+            db,
+            event_type="experiment_session_created",
+            participant=participant,
+            session=session,
+            stage="entry",
+        )
+        db.commit()
+        db.refresh(participant)
+        db.refresh(session)
+        return participant, session
+
+    @staticmethod
+    def _create_self_generated_participant(db: Session) -> Participant:
+        prefix = re.sub(r"[^A-Za-z0-9]", "", get_settings().participant_code_prefix.upper()) or "P"
+        for _ in range(20):
+            next_number = ParticipantRegistryService._next_self_code_number(db, prefix=prefix)
+            suffix = "".join(random.choice(SELF_CODE_SUFFIX_ALPHABET) for _ in range(2))
+            code = f"{prefix}{next_number:03d}-{suffix}"
+            if db.scalar(select(Participant.id).where(Participant.participant_code == code)):
+                continue
+            participant = Participant(
+                participant_code=code,
+                assigned_group=None,
+                registration_source="self_generated",
+            )
+            db.add(participant)
+            db.flush()
+            return participant
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Could not generate a unique participant code")
+
+    @staticmethod
+    def _next_self_code_number(db: Session, *, prefix: str) -> int:
+        pattern = re.compile(rf"^{re.escape(prefix)}(\d+)-[A-Z0-9]+$")
+        max_number = 0
+        codes = db.scalars(
+            select(Participant.participant_code).where(Participant.participant_code.like(f"{prefix}%-%"))
+        )
+        for code in codes:
+            match = pattern.match(code)
+            if match:
+                max_number = max(max_number, int(match.group(1)))
+        return max_number + 1
 
 
 class ExperimentSessionService:
@@ -396,11 +465,15 @@ class GroupAssignmentService:
         participant = db.get(Participant, session.participant_id)
         if participant is None:
             raise ValueError("Cannot assign group without participant")
-        if participant.assigned_group in VALID_GROUPS:
+        settings = get_settings()
+        if settings.study_mode == "pilot_single":
+            group = "pilot"
+            source = "pilot_single"
+        elif participant.assigned_group in GROUPED_STUDY_GROUPS:
             group = participant.assigned_group
             source = "imported"
         else:
-            group = random.choice(sorted(VALID_GROUPS))
+            group = random.choice(sorted(GROUPED_STUDY_GROUPS))
             source = "randomized"
         session.group = group
         session.assignment_source = source
@@ -740,9 +813,23 @@ class DialogueService:
         db.flush()
         history = DialogueService._provider_history(db, session_id=session.id)
         prompt = prompt_for_group(session.group or "")
-        provider = OpenAICompatibleProvider(get_settings())
+        settings = get_settings()
+        provider = create_ai_provider(settings)
         try:
-            result = provider.generate(system_prompt=prompt.system_prompt, messages=history)
+            result = provider.generate(
+                system_prompt=prompt.system_prompt,
+                messages=history,
+                provider_thread_id=session.dialogue_model_thread_id,
+            )
+            if result.provider_thread_id:
+                session.dialogue_model_thread_id = result.provider_thread_id
+            if result.provider_turn_id:
+                session.dialogue_model_turn_id = result.provider_turn_id
+            generation_params = dict(result.generation_params)
+            if result.provider_thread_id:
+                generation_params["provider_thread_id"] = result.provider_thread_id
+            if result.provider_turn_id:
+                generation_params["provider_turn_id"] = result.provider_turn_id
             assistant_message = ChatMessage(
                 experiment_session_id=session.id,
                 participant_code=participant.participant_code,
@@ -752,7 +839,7 @@ class DialogueService:
                 provider_name=result.provider_name,
                 model_name=result.model_name,
                 system_prompt_version=prompt.version,
-                generation_params=result.generation_params,
+                generation_params=generation_params,
                 request_started_at=result.request_started_at,
                 response_completed_at=result.response_completed_at,
                 duration_ms=result.duration_ms,
@@ -766,8 +853,8 @@ class DialogueService:
                 message_index=next_index + 1,
                 role="assistant",
                 content="",
-                provider_name=get_settings().ai_provider_name,
-                model_name=get_settings().ai_model_name,
+                provider_name=settings.ai_provider_name,
+                model_name=settings.ai_model_name,
                 system_prompt_version=prompt.version,
                 generation_params={},
                 request_started_at=timestamp,
@@ -785,8 +872,8 @@ class DialogueService:
                 session=session,
                 stage=session.status,
                 metadata={
-                    "provider_name": get_settings().ai_provider_name,
-                    "model_name": get_settings().ai_model_name,
+                    "provider_name": settings.ai_provider_name,
+                    "model_name": settings.ai_model_name,
                     "system_prompt_version": prompt.version,
                     "retry_count": 0,
                     "error_code": exc.code,

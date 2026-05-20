@@ -1,16 +1,15 @@
 # Mentor Echo MVP 实验平台
 
-Mentor Echo 是一个用于研究“AI 对话是否能促进大学生身份发展”的实验平台。它把被试编号、前测问卷、实验/控制组分配、AI 对话、后测问卷、行为事件、管理员审计和研究数据导出串成一条可恢复、可审计的实验流程。
+Mentor Echo 是一个用于研究“AI 对话是否能促进大学生身份发展”的实验平台。当前默认面向研究一预实验：被试可自助生成匿名编号，完成前测、单组 AI 对话、后测、行为事件记录、管理员审计和研究数据导出。分组能力保留给后续研究二或正式分组实验。
 
 这个项目不是通用聊天产品，也不是心理咨询系统。它的目标是帮助研究者稳定地运行一个 MVP 级别的对照实验，并生成后续统计分析和文本分析所需的数据包。
 
 ## 实验流程
 
 ```text
-被试输入编号
+被试输入或自助生成编号
 → 前测问卷
-→ 锁定实验组 / 控制组分配
-→ AI 对话干预
+→ 研究一预实验单组 AI 对话
 → 达成 10 条被试消息 + 15 分钟
 → 后测问卷
 → 实验完成
@@ -20,15 +19,13 @@ Mentor Echo 是一个用于研究“AI 对话是否能促进大学生身份发�
 ### 被试端
 
 - 被试只使用匿名 **被试编号（Participant Code）** 进入实验。
-- 被试不需要账号密码；编号就是入口凭证。
+- 被试可以输入研究者提供的编号，也可以让平台自动生成 `P001-7K` 这类“顺序号 + 防猜后缀”的编号。
+- 被试不需要账号密码；编号就是入口凭证，必须由被试截图或记下。
 - 同一编号再次进入时会恢复同一个实验会话，避免重复提交。
 - 前测提交后锁定，不允许被试自行修改。
-- 分组一旦确定就锁定：
-  - 导入时指定 `experiment` / `control` 的，直接使用导入分组；
-  - 未指定分组的，在首次到达分组点时随机分组。
-- AI 对话分为：
-  - 实验组：围绕专业、未来学习/工作方向、价值、目标、自我理解与身份发展展开；
-  - 控制组：围绕电影、音乐、饮食、旅行、校园生活等非身份主题轻松聊天。
+- 当前默认 `STUDY_MODE=pilot_single`：研究一预实验暂不展示、不执行实验组/控制组分配，所有被试进入同一套 AI 对话。
+- 后续研究二可切换到 `STUDY_MODE=grouped`，恢复导入/随机分组和不同提示词条件。
+- AI 对话当前围绕专业、未来学习/工作方向、价值、目标、自我理解与身份发展展开。
 - 完成 AI 对话必须同时满足：
   - 至少 10 条被试消息；
   - 至少 15 分钟对话时长。
@@ -37,10 +34,10 @@ Mentor Echo 是一个用于研究“AI 对话是否能促进大学生身份发�
 ### 研究者管理端
 
 - 单一研究者管理员登录。
-- 导入被试编号，可选预设分组。
+- 查看自助生成的被试编号，也可手动导入被试编号；预设分组仅在后续分组模式使用。
 - 查看实验进度仪表盘，包括：
   - 被试编号；
-  - 分组与分组来源；
+  - 当前研究模式、分组与分组来源；
   - 当前状态；
   - 前测/后测完成情况；
   - 对话轮次与对话时长；
@@ -85,7 +82,7 @@ export_manifest.json
 - 前端：React + TypeScript + Vite
 - 后端：FastAPI + SQLAlchemy + Alembic + Pydantic Settings
 - 数据库：PostgreSQL
-- AI 调用：后端 OpenAI-compatible Chat Completions 边界，可替换 provider/model
+- AI 调用：后端 provider 边界，支持 mock、DeepSeek/OpenAI-compatible Chat Completions、Codex app-server
 
 ## 快速启动
 
@@ -116,7 +113,7 @@ export_manifest.json
 如果没有修改 `.env`，默认是：
 
 - 研究者账号：`researcher`
-- 研究者密码：`change-me-admin-password`
+- 研究者密码：`echo2026`
 - 演示被试编号：`PILOT001`
 - 被试密码：无；输入被试编号即可进入
 
@@ -130,7 +127,7 @@ export_manifest.json
 cp .env.example .env
 ```
 
-按需修改 `.env`。真实模型调用至少需要配置 provider、base URL、model 和 API key。
+按需修改 `.env`。DeepSeek 需要配置 provider、base URL、model 和 API key；Codex 需要服务器已安装并登录 Codex CLI。
 
 ### 2. 启动数据库
 
@@ -161,7 +158,7 @@ PYTHONPATH=backend python -m app.seed
 可通过环境变量改默认被试：
 
 ```bash
-SEED_PARTICIPANT_CODE=PILOT002 SEED_ASSIGNED_GROUP=control PYTHONPATH=backend python -m app.seed
+SEED_PARTICIPANT_CODE=PILOT002 PYTHONPATH=backend python -m app.seed
 ```
 
 ### 5. 启动后端
@@ -180,6 +177,18 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## 云服务器最小部署
+
+服务器已安装并登录 Codex CLI 时，可使用：
+
+```bash
+./scripts/deploy_minimal.sh
+```
+
+脚本会检查 `.env`、PostgreSQL、后端迁移、前端构建和 Codex 命令，并在启动时打印研究者后台地址、账号和当前 `.env` 中的密码。脚本不会自动安装或登录 Codex CLI。
+
+> 如果服务器对公网开放，请在正式收数前把 `.env` 中的 `ADMIN_PASSWORD` 和 `ADMIN_TOKEN` 改成更强的值。
 
 ## 验证命令
 
@@ -205,16 +214,27 @@ docs/pilot-readiness-check.md
 默认 `.env.example` 使用 mock provider，不会调用外部模型。接入真实模型时配置：
 
 ```text
-AI_PROVIDER_NAME=
-AI_BASE_URL=
-AI_MODEL_NAME=
+# mock | deepseek | openai-compatible | codex
+AI_PROVIDER_NAME=mock
+AI_BASE_URL=https://api.deepseek.com/v1
+AI_MODEL_NAME=deepseek-chat
 AI_API_KEY=
-AI_TEMPERATURE=
-AI_MAX_TOKENS=
-AI_TIMEOUT_SECONDS=
+AI_TEMPERATURE=0.3
+AI_MAX_TOKENS=600
+AI_TIMEOUT_SECONDS=30
+
+# 当前默认研究一预实验单组；后续研究二可改为 grouped
+STUDY_MODE=pilot_single
+SELF_REGISTRATION_ENABLED=true
+PARTICIPANT_CODE_PREFIX=P
+
+# AI_PROVIDER_NAME=codex 时使用；Codex CLI 需在服务器上预先安装并登录
+CODEX_COMMAND=codex app-server
+CODEX_APPROVAL_POLICY=never
+CODEX_SANDBOX=read-only
 ```
 
-真实模型调用可能产生外部 API 费用。API Key 只应保存在本地 `.env` 或部署环境变量中。
+真实模型调用可能产生外部 API 或 Codex 账号费用。API Key 只应保存在本地 `.env` 或部署环境变量中。Codex 模式会把每个 Experiment Session 的 Codex thread id 存入数据库，以便浏览器刷新或后端重启后继续同一段对话。
 
 ## 目录结构
 
@@ -231,13 +251,13 @@ scripts/    本地开发脚本
 
 - PostgreSQL 系统事实源；
 - React/FastAPI 前后端分离；
-- 管理员登录与被试导入；
+- 管理员登录、被试导入与被试自助生成编号；
 - 被试编号入口与恢复；
 - 实验会话状态机；
-- 导入/随机混合分组与分组锁定；
+- 研究一预实验单组流程，并保留导入/随机混合分组扩展位；
 - 版本化前测/后测问卷；
 - 问卷锁定、重置与评分；
-- 实验组/控制组 AI 对话；
+- 研究一预实验单组 AI 对话；
 - 后端 AI provider 边界；
 - 对话完成资格判定；
 - 行为事件与审计日志；

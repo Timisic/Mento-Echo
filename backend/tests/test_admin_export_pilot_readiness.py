@@ -48,7 +48,7 @@ def _complete_pilot_flow(client, admin_headers, db_session, code: str = "PILOT01
     assert pre.status_code == 200, pre.text
     assignment = client.post(f"/api/participant/sessions/{session_id}/assignment")
     assert assignment.status_code == 200
-    assert assignment.json()["assignment_source"] == "imported"
+    assert assignment.json()["assignment_source"] == "pilot_single"
 
     state = client.get(f"/api/participant/sessions/{session_id}/dialogue")
     assert state.status_code == 200, state.text
@@ -95,8 +95,8 @@ def test_admin_dashboard_reset_exclusion_controls_and_audit_events(client, admin
     assert status.status_code == 200
     row = status.json()["participants"][0]
     assert row["participant_code"] == "ADMIN01"
-    assert row["group"] == "control"
-    assert row["assignment_source"] == "imported"
+    assert row["group"] == "pilot"
+    assert row["assignment_source"] == "pilot_single"
     assert row["status"] == "chat_in_progress"
     assert row["pre_survey_submitted"] is True
     assert row["post_survey_submitted"] is False

@@ -271,6 +271,12 @@ li {
   max-inline-size: 460px;
 }
 
+.form-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .row-form {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;

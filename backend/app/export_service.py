@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai_provider import CONTROL_PROMPT_VERSION, EXPERIMENT_PROMPT_VERSION
+from app.ai_provider import CONTROL_PROMPT_VERSION, EXPERIMENT_PROMPT_VERSION, PILOT_PROMPT_VERSION
 from app.config import get_settings
 from app.models import (
     AuditLog,
@@ -130,6 +130,7 @@ def _participants_rows(db: Session) -> list[dict[str, Any]]:
         rows.append(
             {
                 "participant_code": participant.participant_code,
+                "registration_source": participant.registration_source,
                 "imported_at": participant.imported_at,
                 "import_batch_id": "",
                 "assigned_group_imported": participant.assigned_group,
@@ -154,6 +155,8 @@ def _session_rows(db: Session) -> list[dict[str, Any]]:
                 "participant_code": participant.participant_code if participant else "",
                 "group": session.group,
                 "assignment_source": session.assignment_source,
+                "dialogue_model_thread_id": session.dialogue_model_thread_id,
+                "dialogue_model_turn_id": session.dialogue_model_turn_id,
                 "status": session.status,
                 "started_at": session.started_at,
                 "pre_survey_submitted_at": session.pre_survey_submitted_at,
@@ -439,7 +442,9 @@ must not become a competing source of truth.
 - AI provider: `{settings.ai_provider_name}`
 - AI base URL: `{settings.ai_base_url}`
 - AI model: `{settings.ai_model_name}`
+- Study mode: `{settings.study_mode}`
 - Generation parameters: temperature `{settings.ai_temperature}`, max tokens `{settings.ai_max_tokens}`
+- Pilot prompt version: `{PILOT_PROMPT_VERSION}`
 - Experiment prompt version: `{EXPERIMENT_PROMPT_VERSION}`
 - Control prompt version: `{CONTROL_PROMPT_VERSION}`
 - Completion rule: 10 participant turns + 15 minutes

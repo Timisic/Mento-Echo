@@ -5,8 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-ExperimentGroup = Literal["experiment", "control"]
-AssignmentSource = Literal["imported", "randomized"]
+ExperimentGroup = Literal["pilot", "experiment", "control"]
+AssignmentSource = Literal["pilot_single", "imported", "randomized"]
 DialogueFinishDecision = Literal["can_end", "continue_related", "not_core", "early_stop"]
 SessionStatus = Literal[
     "not_started",
@@ -71,6 +71,12 @@ class SessionResponse(BaseModel):
 
 class ParticipantEntryResponse(BaseModel):
     accepted: bool
+    message: str
+    session: SessionResponse
+
+
+class ParticipantSelfRegisterResponse(BaseModel):
+    participant_code: str
     message: str
     session: SessionResponse
 

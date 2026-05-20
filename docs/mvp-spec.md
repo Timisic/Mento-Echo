@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Build a stable backend-first MVP for an AI dialogue experiment on university students' identity formation. UI may be simple, but the experimental lifecycle, data integrity, AI provider boundary, logging, and export must be reliable enough for pilot use.
+Build a stable backend-first MVP for Study One Pilot, a single-group AI dialogue pre-experiment on university students' identity formation. UI may be simple, but the experimental lifecycle, data integrity, AI provider boundary, dialogue memory, logging, and export must be reliable enough for pilot use. Grouped prompt-comparison behavior is retained as a later Study Two extension.
 
 ## MVP scope
 
@@ -10,9 +10,9 @@ The MVP implements the complete experimental loop:
 
 ```text
 Unified entry
-→ participant code verification
+→ participant code entry or self-generation
 → pre-survey
-→ group assignment
+→ Study One Pilot single-group condition
 → AI dialogue
 → post-survey
 → completion
@@ -32,13 +32,13 @@ Unified entry
 
 ### Participant
 
-A participant enters the platform with a researcher-issued participant code, completes the pre-survey, talks with the assigned AI condition, and completes the post-survey.
+A participant enters the platform with a researcher-issued or platform-generated participant code, completes the pre-survey, talks with the Study One Pilot AI dialogue condition, and completes the post-survey.
 
 ### Researcher administrator
 
 A single administrator account can:
 
-- import participant codes and optional pre-assigned groups;
+- import participant codes and inspect platform-generated participant codes;
 - view participant progress and key completion metrics;
 - reset locked stages when necessary;
 - mark sessions as excluded or requiring review;
@@ -50,11 +50,11 @@ A single administrator account can:
 - The platform stores `participant_code` but does not store participant names.
 - The platform may generate internal IDs such as `participant_id` and `experiment_session_id`.
 - If the researcher needs a name-to-code mapping, it must be kept outside the platform.
-- The participant code is the cross-stage research identifier in exports.
+- The participant code is the cross-stage research identifier in exports. Self-generated codes use a readable sequence plus anti-guessing suffix, for example `P001-7K`.
 
-## Participant import
+## Participant code provisioning
 
-Minimum import fields:
+Minimum import fields remain available for researcher-provisioned codes:
 
 | Field | Required | Notes |
 |---|---:|---|
@@ -68,9 +68,9 @@ Recommended import handling:
 - Record import time and administrator in the audit log.
 - Preserve the original imported assignment source for exports.
 
-## Group assignment
+## Study mode and group assignment
 
-Group assignment supports both pre-assigned and randomized flows:
+Current default scope is `pilot_single`: Study One Pilot proceeds without participant-visible experiment/control assignment. The platform may internally mark the session as `pilot` with `assignment_source = pilot_single` so exports remain explicit. Future `grouped` mode supports both pre-assigned and randomized flows:
 
 1. If an imported participant row includes `assigned_group`, the platform uses that group.
 2. If `assigned_group` is blank, the platform randomizes when the participant first reaches the assignment point.
@@ -102,7 +102,7 @@ Default groups:
 
 ### AI dialogue
 
-- Dialogue starts after pre-survey submission and group assignment.
+- Dialogue starts after pre-survey submission. In `pilot_single` mode no participant-visible grouping step is required.
 - Participant instructions must state that valid completion requires at least 10 participant messages and at least 15 minutes.
 - The system tracks participant turn count and elapsed time from dialogue start.
 - The “finish dialogue / enter post-survey” action is disabled until both thresholds are met.
@@ -163,10 +163,12 @@ Admin dashboard should show the status plus key metrics:
 
 MVP provider requirements:
 
-- Use a single configured SOTA model through an API key.
-- Use an OpenAI-compatible chat completion interface where possible.
+- Use one configured dialogue model provider selected by environment configuration: `mock`, `deepseek`/OpenAI-compatible, or `codex`.
+- Use an OpenAI-compatible chat completion interface for DeepSeek-style providers.
+- Use local `codex app-server` for Codex mode; Codex CLI installation and login are deployment prerequisites.
 - Keep a backend `AIProvider` boundary so the model/provider can be replaced later.
 - Do not hard-code the selected model name in business logic.
+- For Codex mode, persist the provider thread id on the Experiment Session and reuse it for all participant turns in that session.
 
 Every AI response record should preserve enough metadata for reproducibility:
 
@@ -180,11 +182,18 @@ Every AI response record should preserve enough metadata for reproducibility:
 | `generation_params` | Temperature, max tokens, top_p, etc. |
 | `request_started_at` / `response_completed_at` | Timing diagnostics. |
 | `retry_count` | Stability diagnostics. |
+| `provider_thread_id` | Codex or provider-side dialogue memory handle when applicable. |
 | `error_code` / `error_message` | Stored only for failed calls. |
 
 ## AI condition behavior
 
-### Experiment group
+### Study One Pilot condition
+
+Theme: whether the participant wants to continue their current major and whether future study or work should continue in this direction.
+
+The Study One Pilot uses this single condition for all participants.
+
+### Future experiment group
 
 Theme: whether the participant wants to continue their current major and whether future study or work should continue in this direction.
 

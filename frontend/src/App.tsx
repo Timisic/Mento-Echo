@@ -19,6 +19,7 @@ import {
   markSessionExcluded,
   resetPreSurvey,
   sendDialogueMessage,
+  selfRegisterParticipant,
   submitQuestionnaire
 } from './api';
 import './styles.css';
@@ -48,11 +49,13 @@ const statusLabels: Record<string, string> = {
 };
 
 const groupLabels: Record<string, string> = {
+  pilot: '研究一预实验',
   experiment: '实验组',
   control: '控制组'
 };
 
 const sourceLabels: Record<string, string> = {
+  pilot_single: '单组预实验',
   imported: '导入指定',
   randomized: '系统随机'
 };
@@ -118,7 +121,7 @@ function LandingPage({ onSelect }: { onSelect: (route: Route) => void }) {
         <p className="eyebrow">AI 对话实验</p>
         <h1 id="landing-title">Mentor Echo AI 对话实验平台</h1>
         <p>
-          使用研究者提供的被试编号进入实验。平台只保存编号和实验数据，不收集你的姓名。
+          使用匿名被试编号进入实验；没有编号时可由平台自动生成。平台只保存编号和实验数据，不收集你的姓名。
         </p>
       </div>
       <div className="role-actions" aria-label="选择入口">
@@ -191,6 +194,24 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
       setStatusMessage('已恢复你的实验进度，请按照页面提示继续。');
     } catch (entryError) {
       setError(userFacingError(entryError));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSelfRegister() {
+    setBusy(true);
+    setError('');
+    setStatusMessage('');
+    try {
+      const result = await selfRegisterParticipant();
+      setSession(result.session);
+      setStep(toParticipantStep(result.session));
+      setQuestionnaire(null);
+      setDialogue(null);
+      setStatusMessage(`已生成你的被试编号：${result.participant_code}。请截图或记下，后续继续实验需要完整输入这个编号。`);
+    } catch (registerError) {
+      setError(userFacingError(registerError));
     } finally {
       setBusy(false);
     }
@@ -331,7 +352,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
         <FlowHeader
           eyebrow="被试端"
           title="AI 对话实验"
-          description="请使用研究者提供的被试编号完成当前阶段。"
+          description="请输入已有被试编号，或由平台自动生成一个匿名编号。"
           onBack={onBack}
         />
       ) : null}
@@ -339,7 +360,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
       {statusMessage ? <StatusNotice tone="success">{statusMessage}</StatusNotice> : null}
       {busy && !isDialogueStep ? <StatusNotice tone="loading">正在处理，请稍候。</StatusNotice> : null}
 
-      {step === 'entry' ? <ParticipantEntry onSubmit={handleEntry} busy={busy} /> : null}
+      {step === 'entry' ? <ParticipantEntry onSubmit={handleEntry} onSelfRegister={handleSelfRegister} busy={busy} /> : null}
       {step === 'welcome' ? (
         <StageGuide
           title="欢迎参加本实验"
@@ -351,7 +372,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
                 <li>AI 对话</li>
                 <li>后测问卷</li>
               </ol>
-              <p>你需要使用研究者提供的被试编号进入。</p>
+              <p>如果你刚刚生成了被试编号，请先截图或记下；后续继续实验需要完整输入这个编号。</p>
               <p>平台不会收集你的姓名。</p>
             </>
           }
@@ -459,16 +480,28 @@ function FlowHeader({
   );
 }
 
-function ParticipantEntry({ onSubmit, busy }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; busy: boolean }) {
+function ParticipantEntry({
+  onSubmit,
+  onSelfRegister,
+  busy
+}: {
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSelfRegister: () => void;
+  busy: boolean;
+}) {
   return (
     <form className="entry-form" onSubmit={onSubmit}>
       <label>
         被试编号
-        <input name="participant_code" autoComplete="off" required placeholder="请输入研究者提供的编号" />
+        <input name="participant_code" autoComplete="off" required placeholder="例如 P001-7K" />
       </label>
       <button type="submit" className="primary-action" disabled={busy}>
         进入实验
       </button>
+      <button type="button" className="secondary-action" onClick={onSelfRegister} disabled={busy}>
+        没有编号，生成我的编号
+      </button>
+      <p className="form-hint">平台不会收集姓名。生成编号后请截图或记下，编号就是后续恢复实验进度的凭证。</p>
     </form>
   );
 }
@@ -1371,7 +1404,7 @@ function ParticipantImportPanel({
       <div className="section-heading">
         <div>
           <h2 id="import-heading">导入被试编号</h2>
-          <p>仅导入匿名编号。分组可留空，由平台在被试进入分组点时随机确定。</p>
+          <p>当前研究一预实验支持被试自助生成编号。手动导入仍可用于指定编号；预设分组仅在后续 grouped 模式中生效。</p>
         </div>
         <button type="button" className="secondary-action" onClick={onRefresh} disabled={busy}>
           刷新仪表盘
@@ -1385,7 +1418,7 @@ function ParticipantImportPanel({
         <label>
           预设分组
           <select name="assigned_group" defaultValue="">
-            <option value="">首次进入时随机</option>
+            <option value="">研究一预实验不预设</option>
             <option value="experiment">实验组</option>
             <option value="control">控制组</option>
           </select>
@@ -1433,7 +1466,7 @@ function AdminDashboard({
       <div className="section-heading">
         <div>
           <h2 id="dashboard-heading">试点进度仪表盘</h2>
-          <p>默认只显示进度、分组和操作指标，不内联展示完整原始聊天。</p>
+          <p>默认只显示进度、研究模式和操作指标，不内联展示完整原始聊天。</p>
         </div>
         <div className="toolbar">
           <button type="button" className="secondary-action" onClick={onRefresh} disabled={busy}>
@@ -1472,7 +1505,7 @@ function AdminDashboard({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={11}>暂无被试记录。导入编号后会显示在这里。</td>
+                <td colSpan={11}>暂无被试记录。被试自助生成或研究者导入编号后会显示在这里。</td>
               </tr>
             ) : (
               rows.map((row) => (

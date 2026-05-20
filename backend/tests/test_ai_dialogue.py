@@ -27,6 +27,8 @@ def prepared_session(client, admin_headers, code="DIALOGUE", group="experiment")
 
 
 def test_ai_provider_boundary_mock_and_missing_key_behavior():
+    pilot_prompt = prompt_for_group("pilot").system_prompt
+    assert "Study One Pilot" in pilot_prompt
     experiment_prompt = prompt_for_group("experiment").system_prompt
     assert "Never reveal" in experiment_prompt
     assert "internal rules" in experiment_prompt
@@ -69,7 +71,7 @@ def test_prompt_selection_message_persistence_and_metadata(client, admin_headers
 
     state = client.get(f"/api/participant/sessions/{session_id}/dialogue")
     assert state.status_code == 200
-    assert state.json()["system_prompt_version"] == prompt_for_group("experiment").version
+    assert state.json()["system_prompt_version"] == prompt_for_group("pilot").version
     send = client.post(
         f"/api/participant/sessions/{session_id}/dialogue/messages",
         json={"content": "我在考虑是否继续这个专业。"},
@@ -81,13 +83,56 @@ def test_prompt_selection_message_persistence_and_metadata(client, admin_headers
     assert body["assistant_message"]["role"] == "assistant"
     assert body["assistant_message"]["provider_name"] == "mock"
     assert body["assistant_message"]["model_name"] == "mock-mentor-echo"
-    assert body["assistant_message"]["system_prompt_version"] == "major_choice_dialogue_protocol_v2"
+    assert body["assistant_message"]["system_prompt_version"] == "study_one_pilot_major_choice_v1"
     assert body["progress"]["participant_turn_count"] == 1
     assert "api_key" not in str(body).lower()
 
     messages = db_session.query(ChatMessage).filter_by(experiment_session_id=session_id).order_by(ChatMessage.message_index).all()
     assert [message.role for message in messages] == ["participant", "assistant"]
     assert messages[1].generation_params["temperature"] == 0.3
+
+
+def test_dialogue_provider_thread_id_is_reused_for_session(client, admin_headers, db_session, monkeypatch):
+    calls: list[str | None] = []
+
+    class FakeProvider:
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            from app.ai_provider import AIProviderResult
+            from app.services import now_utc
+
+            calls.append(provider_thread_id)
+            timestamp = now_utc()
+            return AIProviderResult(
+                content="fake response",
+                provider_name="codex",
+                model_name="fake-codex",
+                generation_params={},
+                request_started_at=timestamp,
+                response_completed_at=timestamp,
+                duration_ms=1,
+                provider_thread_id=provider_thread_id or "thread-1",
+                provider_turn_id=f"turn-{len(calls)}",
+            )
+
+    monkeypatch.setattr("app.services.create_ai_provider", lambda settings: FakeProvider())
+    session_id = prepared_session(client, admin_headers, code="THREADMEM", group="experiment")
+
+    first = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": "第一条消息"},
+    )
+    second = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": "第二条消息"},
+    )
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert calls == [None, "thread-1"]
+    session = db_session.get(ExperimentSession, session_id)
+    assert session is not None
+    assert session.dialogue_model_thread_id == "thread-1"
+    assert session.dialogue_model_turn_id == "turn-2"
 
 
 def test_completion_eligibility_requires_6_effective_turns_and_10_minutes(client, admin_headers, db_session):

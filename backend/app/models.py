@@ -25,6 +25,7 @@ class Participant(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     participant_code: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
     assigned_group: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    registration_source: Mapped[str] = mapped_column(String(32), default="imported", nullable=False)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
@@ -66,6 +67,8 @@ class ExperimentSession(Base):
     dialogue_finish_decision_turn_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     dialogue_continue_until_turn_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     dialogue_forced_finish_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    dialogue_model_thread_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    dialogue_model_turn_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     resume_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)

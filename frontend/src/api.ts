@@ -7,11 +7,11 @@ export type HealthResponse = {
 
 export type AdminStatusRow = {
   participant_code: string;
-  assigned_group_imported: 'experiment' | 'control' | null;
+  assigned_group_imported: 'pilot' | 'experiment' | 'control' | null;
   experiment_session_id: string | null;
   status: string;
-  group: 'experiment' | 'control' | null;
-  assignment_source: 'imported' | 'randomized' | null;
+  group: 'pilot' | 'experiment' | 'control' | null;
+  assignment_source: 'pilot_single' | 'imported' | 'randomized' | null;
   assignment_locked: boolean;
   pre_survey_submitted: boolean;
   post_survey_submitted: boolean;
@@ -38,8 +38,8 @@ export type ParticipantSession = {
   experiment_session_id: string;
   participant_code: string;
   status: string;
-  group: 'experiment' | 'control' | null;
-  assignment_source: 'imported' | 'randomized' | null;
+  group: 'pilot' | 'experiment' | 'control' | null;
+  assignment_source: 'pilot_single' | 'imported' | 'randomized' | null;
   assignment_locked: boolean;
   resume_count: number;
   last_seen_at: string | null;
@@ -81,7 +81,7 @@ export type QuestionnaireDefinition = {
 export type DialogueState = {
   experiment_session_id: string;
   participant_code: string;
-  group: 'experiment' | 'control';
+  group: 'pilot' | 'experiment' | 'control';
   system_prompt_version: string;
   status: string;
   progress: {
@@ -207,11 +207,15 @@ export function enterParticipantCode(participantCode: string): Promise<{ session
   });
 }
 
+export function selfRegisterParticipant(): Promise<{ participant_code: string; session: ParticipantSession }> {
+  return request('/api/participant/self-register', { method: 'POST' });
+}
+
 export function createAssignment(sessionId: string): Promise<{
   experiment_session_id: string;
   participant_code: string;
-  group: 'experiment' | 'control';
-  assignment_source: 'imported' | 'randomized';
+  group: 'pilot' | 'experiment' | 'control';
+  assignment_source: 'pilot_single' | 'imported' | 'randomized';
   assignment_locked: boolean;
 }> {
   return request(`/api/participant/sessions/${sessionId}/assignment`, { method: 'POST' });

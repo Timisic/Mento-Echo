@@ -29,6 +29,7 @@ from app.schemas import (
     ParticipantEntryResponse,
     ParticipantImportRequest,
     ParticipantImportResponse,
+    ParticipantSelfRegisterResponse,
     QuestionnaireDefinitionResponse,
     QuestionnaireItemResponse,
     QuestionnaireScoreResponse,
@@ -300,6 +301,16 @@ def participant_entry(
     return ParticipantEntryResponse(
         accepted=True,
         message="Experiment Session created." if created else "Experiment Session resumed.",
+        session=to_session_response(participant, session),
+    )
+
+
+@app.post("/api/participant/self-register", response_model=ParticipantSelfRegisterResponse)
+def participant_self_register(db: Session = Depends(get_session)) -> ParticipantSelfRegisterResponse:
+    participant, session = ParticipantRegistryService.self_register(db)
+    return ParticipantSelfRegisterResponse(
+        participant_code=participant.participant_code,
+        message="Participant code generated. Save it before continuing.",
         session=to_session_response(participant, session),
     )
 

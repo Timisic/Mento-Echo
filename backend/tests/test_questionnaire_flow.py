@@ -62,8 +62,8 @@ def test_pre_submission_locks_raw_responses_scores_and_assignment(client, admin_
     assert body["locked"] is True
     assert body["response_count"] == 23
     assert body["session"]["status"] == "pre_survey_submitted"
-    assert body["session"]["group"] == "control"
-    assert body["session"]["assignment_source"] == "imported"
+    assert body["session"]["group"] == "pilot"
+    assert body["session"]["assignment_source"] == "pilot_single"
     duplicate = client.post(
         f"/api/participant/sessions/{session_id}/questionnaires/pre/submit",
         json={"responses": responses_for_phase("pre")},

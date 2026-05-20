@@ -15,6 +15,11 @@ fi
 source .venv/bin/activate
 python -m pip install -e 'backend[dev]'
 
+set -a
+# shellcheck disable=SC1091
+source .env
+set +a
+
 docker compose up -d db
 for i in $(seq 1 40); do
   db_status="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' mentor-echo-postgres 2>/dev/null || true)"
@@ -45,7 +50,7 @@ BACKEND_PID=$!
 (cd frontend && npm run dev) &
 FRONTEND_PID=$!
 
-cat <<'INFO'
+cat <<INFO
 
 Mentor Echo 已启动：
 - 前端：http://localhost:5173
@@ -53,8 +58,8 @@ Mentor Echo 已启动：
 - API 文档：http://localhost:8000/docs
 
 默认本地演示账号（若 .env 未改动）：
-- 研究者账号：researcher
-- 研究者密码：change-me-admin-password
+- 研究者账号：${ADMIN_USERNAME:-researcher}
+- 研究者密码：${ADMIN_PASSWORD:-echo2026}
 - 被试编号：PILOT001
 - 被试密码：无需密码，输入编号即可进入
 
