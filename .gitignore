@@ -20,6 +20,7 @@ frontend/coverage/
 .env.*
 !.env.example
 .omx/
+deploy_minimal.log
 
 # OS/editor
 .DS_Store

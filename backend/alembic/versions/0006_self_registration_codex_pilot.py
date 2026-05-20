@@ -1,6 +1,6 @@
 """self registration codex pilot
 
-Revision ID: 0006_self_registration_codex_pilot
+Revision ID: 0006_self_reg_codex_pilot
 Revises: 0005_dialogue_protocol
 Create Date: 2026-05-20
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0006_self_registration_codex_pilot"
+revision = "0006_self_reg_codex_pilot"
 down_revision = "0005_dialogue_protocol"
 branch_labels = None
 depends_on = None
