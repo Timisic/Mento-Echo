@@ -174,7 +174,7 @@ def test_export_package_structure_content_and_privacy_boundaries(client, admin_h
 
         readme = archive.read(_member(names, "README.md")).decode("utf-8")
         assert "SENSITIVE RAW CHAT" in readme
-        assert "10 participant turns + 15 active dialogue minutes" in readme
+        assert "6 participant turns + 10 active dialogue minutes" in readme
         assert "mock-mentor-echo" in readme
 
         manifest = json.loads(archive.read(_member(names, "export_manifest.json")))

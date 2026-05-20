@@ -103,7 +103,7 @@ Default groups:
 ### AI dialogue
 
 - Dialogue starts after pre-survey submission. In `pilot_single` mode no participant-visible grouping step is required.
-- Participant instructions must state that valid completion requires at least 10 participant messages and at least 15 minutes.
+- Participant instructions must state that valid completion requires at least 6 participant messages and at least 10 minutes.
 - The system tracks participant turn count and active dialogue time; closed-page/offline gaps do not keep increasing the timer.
 - The “finish dialogue / enter post-survey” action is disabled until both thresholds are met.
 - The AI may provide a summary or closing guidance near the end, but completion eligibility is determined by the platform, not by the AI.
@@ -124,7 +124,7 @@ Canonical session statuses:
 | `not_started` | Participant code exists but no experiment activity has started. |
 | `pre_survey_submitted` | Pre-survey is locked; group assignment should be present before chat starts. |
 | `chat_in_progress` | AI dialogue has started but completion thresholds are not yet met. |
-| `chat_eligible_to_finish` | Dialogue has at least 10 participant turns and at least 15 elapsed minutes. |
+| `chat_eligible_to_finish` | Dialogue has at least 6 participant turns and at least 10 active minutes. |
 | `chat_completed` | Participant ended the eligible dialogue and can proceed to post-survey. |
 | `completed` | Post-survey submitted; full experimental loop complete. |
 | `reset_required` | Administrator or system flagged the session for intervention. |
@@ -290,7 +290,7 @@ The MVP is complete when all are true:
 2. Participant can complete the full entry → pre-survey → assignment → dialogue → post-survey flow.
 3. Random assignment happens only once for participants without imported assignment.
 4. Refresh/re-entry resumes the same experiment session.
-5. Dialogue cannot be completed before 10 participant turns and 15 minutes.
+5. Dialogue cannot be completed before 6 participant turns and 10 active minutes.
 6. Submitted questionnaires are locked from participant edits.
 7. Administrator can view per-participant status and key metrics.
 8. Administrator can reset stages with audited reason.

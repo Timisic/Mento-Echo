@@ -35,7 +35,7 @@ Complete the participant-facing experimental path from pre-survey through AI Dia
 5. After pre-survey and assignment, route participant to the correct AI Dialogue condition.
 6. Implement OpenAI-compatible server-side provider boundary with configurable model/provider settings.
 7. Store participant and assistant messages with provider/model/prompt/generation metadata.
-8. Enforce Dialogue Completion Eligibility in backend: at least 10 participant turns and at least 15 elapsed minutes.
+8. Enforce Dialogue Completion Eligibility in backend: at least 6 participant turns and at least 10 active minutes.
 9. Show participant completion progress in the simple UI and disable finish until eligible.
 10. Render versioned post-survey after eligible dialogue completion.
 11. Lock post-survey on submit and mark Experiment Session completed.

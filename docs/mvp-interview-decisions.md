@@ -8,7 +8,7 @@ This file records the resolved answers from the grill-with-docs planning session
 | 2 | Participant identity | Researchers may import participant codes. The platform stores participant codes only, not names; an internal session ID may be generated. |
 | 3 | Group assignment | Imported participant rows may include a pre-assigned group. If absent, the platform randomizes on first entry and locks the result. |
 | 4 | AI provider | MVP enables one current SOTA model through an API key using an OpenAI-compatible interface; implementation keeps a replaceable provider boundary. |
-| 5 | Dialogue completion | Dialogue may end only after at least 10 participant turns and at least 15 minutes. Participant instructions should state this rule. |
+| 5 | Dialogue completion | Dialogue may end only after at least 6 participant turns and at least 10 minutes. Participant instructions should state this rule. |
 | 6 | Resume behavior | A participant can re-enter with the same participant code and resume the same experiment session. |
 | 7 | Questionnaire management | Questionnaire definitions are structured configuration, not editable in the MVP admin UI, and must carry a version. |
 | 8 | Questionnaire edits | Submitted questionnaires are locked. Only the administrator can reset a stage, and resets must be audited. |

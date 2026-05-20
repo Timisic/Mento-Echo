@@ -123,8 +123,8 @@ const dialogueState = {
     met_min_turns: false,
     met_min_duration: false,
     eligible_to_finish: false,
-    required_participant_turns: 10,
-    required_elapsed_seconds: 900,
+    required_participant_turns: 6,
+    required_elapsed_seconds: 600,
     max_participant_turns: 12,
     max_elapsed_seconds: 3600,
     finish_prompt_visible: false,
@@ -310,8 +310,8 @@ describe('Mentor Echo 前端 UI', () => {
     fireEvent.click(screen.getByRole('button', { name: '提交前测' }));
 
     expect(await screen.findByRole('heading', { name: 'AI 对话说明' })).toBeInTheDocument();
-    expect(screen.getByText('至少 10 个有效用户回合')).toBeInTheDocument();
-    expect(screen.getByText('对话时间至少 15 分钟')).toBeInTheDocument();
+    expect(screen.getByText('至少 6 个有效用户回合')).toBeInTheDocument();
+    expect(screen.getByText('对话时间至少 10 分钟')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '开始 AI 对话' }));
 
     expect(await screen.findByRole('heading', { name: '围绕专业与未来方向展开对话' })).toBeInTheDocument();
@@ -319,8 +319,8 @@ describe('Mentor Echo 前端 UI', () => {
     expect(container.querySelector('.topic-banner')).toBeNull();
     expect(await screen.findByText('请继续围绕专业选择与未来方向交流。')).toBeInTheDocument();
     expect(screen.queryByText('请确认接下来的提问仍围绕专业选择、未来方向、升学或就业展开。')).not.toBeInTheDocument();
-    expect(screen.getByText('消息数：3 / 10')).toBeInTheDocument();
-    expect(screen.getByText('对话时长：04:21 / 15:00')).toBeInTheDocument();
+    expect(screen.getByText('消息数：3 / 6')).toBeInTheDocument();
+    expect(screen.getByText('对话时长：04:21 / 10:00')).toBeInTheDocument();
     expect(screen.getByText('60 分钟后页面会提示可以休息退出；后端不会因时间到达而强制结束。')).toBeInTheDocument();
     expect(screen.queryByText(/上限：.*60:00/)).not.toBeInTheDocument();
     expect(screen.getByText('尚未达到完成条件')).toBeInTheDocument();

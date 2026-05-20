@@ -34,7 +34,7 @@ A single researcher administrator account can import participant codes, monitor 
 18. As a participant in the experiment group, I want the AI dialogue to focus on my current major, future study or work direction, values, goals, and self-understanding, so that the conversation matches the identity formation intervention.
 19. As a participant in the control group, I want the AI dialogue to stay on light identity-unrelated topics, so that the control condition controls for AI interaction without intentionally triggering identity reflection.
 20. As a researcher administrator, I want the experiment group and control group prompts to be versioned, so that future analysis can identify which prompt condition was used.
-21. As a participant, I want the instructions to clearly state that the dialogue requires at least 10 participant messages and at least 15 minutes, so that I understand the completion requirement.
+21. As a participant, I want the instructions to clearly state that the dialogue requires at least 6 participant messages and at least 10 minutes, so that I understand the completion requirement.
 22. As a participant, I want the finish-dialogue action disabled until both completion thresholds are met, so that I cannot accidentally submit an invalid dialogue.
 23. As a researcher administrator, I want the completion rule enforced by the platform rather than by the AI, so that eligibility is deterministic and auditable.
 24. As a researcher administrator, I want the AI to be allowed to summarize near the end without deciding completion, so that the research intervention stays controlled.
@@ -87,7 +87,7 @@ A single researcher administrator account can import participant codes, monitor 
   | `not_started` | Participant code exists but no experiment activity has started. |
   | `pre_survey_submitted` | Pre-survey is locked; group assignment should be present before chat starts. |
   | `chat_in_progress` | AI dialogue has started but completion thresholds are not yet met. |
-  | `chat_eligible_to_finish` | Dialogue has at least 10 participant turns and at least 15 elapsed minutes. |
+  | `chat_eligible_to_finish` | Dialogue has at least 6 participant turns and at least 10 active minutes. |
   | `chat_completed` | Participant ended the eligible dialogue and can proceed to post-survey. |
   | `completed` | Post-survey submitted; full experimental loop complete. |
   | `reset_required` | Administrator or system flagged the session for intervention. |
@@ -102,7 +102,7 @@ A single researcher administrator account can import participant codes, monitor 
 - Build an AI Provider module with a configurable provider boundary. Codex GPT-5.5 is preferred for participant dialogue when it can satisfy the 10-second response SLA; DeepSeek-style OpenAI-compatible providers are fallback options with server-side API key handling. Codex uses local `codex app-server` and persists a thread id per Experiment Session. Business logic should depend on a provider interface rather than a hard-coded vendor call.
 - Build an AI Dialogue module that stores participant messages, assistant messages, prompt mode (`promptless`), provider metadata, model name, generation parameters, timing, retry count, fallback metadata, and sanitized errors.
 - Do not send system prompts, developer instructions, base instructions, or model-side topic guidance to dialogue model providers in the current Study One Pilot.
-- Enforce dialogue completion eligibility in backend logic using both thresholds: at least 10 participant turns and at least 15 minutes of active dialogue time. Offline gaps after the participant closes the page must not count, and the AI must not determine eligibility.
+- Enforce dialogue completion eligibility in backend logic using both thresholds: at least 6 participant turns and at least 10 minutes of active dialogue time. Offline gaps after the participant closes the page must not count, and the AI must not determine eligibility.
 - Build a Behavior Event module for key experiment events and technical diagnostics, not high-granularity frontend analytics.
 - Build an Audit Log module for administrator actions such as import, reset, exclusion, configuration change, and export.
 - Build an Export Package module that creates a ZIP archive from PostgreSQL and includes raw tables, derived scoring files, an analysis dataset, raw chat JSONL, behavior events, audit logs, AI call diagnostics, README, and manifest.
@@ -118,7 +118,7 @@ A single researcher administrator account can import participant codes, monitor 
 - Tests should verify externally observable behavior and research protocol guarantees, not internal implementation details.
 - Unit test the Experiment Session state machine: valid transitions, invalid transitions, completed-session duplicate prevention, reset behavior, exclusion behavior, and resume behavior.
 - Unit test Group Assignment: imported assignment wins, blank imported group randomizes once, assignment source is recorded, and refresh/re-entry never re-randomizes.
-- Unit test Dialogue Completion Eligibility: fewer than 10 turns fails, less than 15 minutes fails, both thresholds pass, and assistant messages do not count as participant turns.
+- Unit test Dialogue Completion Eligibility: fewer than 6 turns fails, less than 10 minutes fails, both thresholds pass, and assistant messages do not count as participant turns.
 - Unit test Questionnaire Definition and Response locking: correct version is attached, required fields are enforced, submitted phases cannot be edited by participants, and admin reset is required for correction.
 - Unit test Questionnaire Scoring: raw responses map to instrument/dimension scores, attention checks are detected, missing items are handled explicitly, and change scores are computed from pre/post values.
 - Unit test AI Provider adapter behavior with mocked OpenAI-compatible responses: successful response metadata, timeout/error capture, retry count, and secret-free logging.

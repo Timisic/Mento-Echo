@@ -306,7 +306,7 @@ def test_codex_retryable_error_notification_does_not_fail_turn():
     ) == "ok"
 
 
-def test_completion_eligibility_requires_10_effective_turns_and_15_minutes(client, admin_headers, db_session):
+def test_completion_eligibility_requires_6_effective_turns_and_10_active_minutes(client, admin_headers, db_session):
     session_id = prepared_session(client, admin_headers, code="DELIG", group="control")
     assert client.get(f"/api/participant/sessions/{session_id}/dialogue").status_code == 200
     session = db_session.get(ExperimentSession, session_id)
@@ -322,7 +322,7 @@ def test_completion_eligibility_requires_10_effective_turns_and_15_minutes(clien
     assert filler.status_code == 200, filler.text
     assert filler.json()["progress"]["participant_turn_count"] == 0
 
-    for i in range(9):
+    for i in range(DialogueService.MIN_PARTICIPANT_TURNS - 1):
         response = client.post(
             f"/api/participant/sessions/{session_id}/dialogue/messages",
             json={"content": f"light topic message {i}"},
@@ -333,14 +333,14 @@ def test_completion_eligibility_requires_10_effective_turns_and_15_minutes(clien
     finish_early = client.post(f"/api/participant/sessions/{session_id}/dialogue/finish")
     assert finish_early.status_code == 409
 
-    tenth = client.post(
+    sixth = client.post(
         f"/api/participant/sessions/{session_id}/dialogue/messages",
-        json={"content": "light topic message 10"},
+        json={"content": "light topic message final"},
     )
-    assert tenth.status_code == 200
-    assert tenth.json()["progress"]["eligible_to_finish"] is True
-    assert tenth.json()["progress"]["finish_prompt_visible"] is True
-    assert tenth.json()["status"] == "chat_eligible_to_finish"
+    assert sixth.status_code == 200
+    assert sixth.json()["progress"]["eligible_to_finish"] is True
+    assert sixth.json()["progress"]["finish_prompt_visible"] is True
+    assert sixth.json()["status"] == "chat_eligible_to_finish"
 
     finish = client.post(f"/api/participant/sessions/{session_id}/dialogue/finish", json={"decision": "can_end"})
     assert finish.status_code == 200

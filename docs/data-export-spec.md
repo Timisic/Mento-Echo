@@ -34,7 +34,7 @@ Human-readable export description:
 - AI provider/model configuration snapshot;
 - prompt mode (`promptless` for the current MVP);
 - AI response SLA and fallback rule: prefer Codex GPT-5.5 within 10 seconds, otherwise fall back to DeepSeek/OpenAI-compatible provider;
-- completion rule: 10 participant turns + 15 minutes;
+- completion rule: 6 participant turns + 10 active minutes;
 - group assignment rules;
 - privacy warning for raw chat;
 - field descriptions or links to schema docs.

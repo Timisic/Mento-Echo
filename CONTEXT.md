@@ -80,7 +80,7 @@ _Avoid_: Best-effort model latency, unlimited Codex wait
 
 
 **Dialogue Completion Eligibility**:
-The state reached when an AI dialogue has at least 10 participant turns and at least 15 minutes of active dialogue time. Offline gaps after the participant closes the page do not count toward the timer.
+The state reached when an AI dialogue has at least 6 participant turns and at least 10 minutes of active dialogue time. Offline gaps after the participant closes the page do not count toward the timer.
 _Avoid_: AI-approved completion
 
 **Completed Experiment**:
@@ -128,7 +128,7 @@ _Avoid_: Multi-role staff, coder account
 - **Dialogue Model Memory** is scoped to exactly one **Experiment Session** and must survive browser refresh or backend restart.
 - The preferred **Dialogue Model Provider** is Codex GPT-5.5 when it can satisfy the **Dialogue Response SLA**; otherwise the platform should fall back to DeepSeek or another faster OpenAI-compatible provider.
 - A **Post-survey** must be submitted after the **AI Dialogue** is complete.
-- **Dialogue Completion Eligibility** requires both 10 participant turns and 15 elapsed minutes.
+- **Dialogue Completion Eligibility** requires both 6 participant turns and 10 active minutes.
 - A **Completed Experiment** requires submitted **Pre-survey**, completed **AI Dialogue**, and submitted **Post-survey**.
 - **Behavior Events** belong to an **Experiment Session**.
 - **Audit Logs** belong to the **Researcher Administrator** action that created them.
@@ -150,7 +150,7 @@ _Avoid_: Multi-role staff, coder account
 > **Domain expert:** “No. Restore the same **Experiment Session** for that participant code and do not re-randomize.”
 >
 > **Dev:** “Can the AI decide when the dialogue is done?”
-> **Domain expert:** “No. The platform determines **Dialogue Completion Eligibility** from 10 participant turns plus 15 minutes. The AI can summarize, but it does not approve completion.”
+> **Domain expert:** “No. The platform determines **Dialogue Completion Eligibility** from 6 participant turns plus 10 active minutes. The AI can summarize, but it does not approve completion.”
 >
 > **Dev:** “If we add Codex, is that for researcher-side coding automation?”
 > **Domain expert:** “No. Treat Codex as a **Dialogue Model Provider** option for the participant-facing **AI Dialogue**, interchangeable with DeepSeek from the experiment flow’s perspective.”
