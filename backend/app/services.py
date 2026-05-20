@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import re
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -9,7 +10,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.ai_provider import PROMPTLESS_DIALOGUE_MODE, AIProviderError, AIProviderResult, create_ai_provider
+from app.ai_provider import (
+    PROMPTLESS_DIALOGUE_MODE,
+    AIProviderError,
+    AIProviderResult,
+    create_ai_provider,
+    sanitize_error_message,
+)
 from app.config import Settings, get_settings
 from app.models import (
     AuditLog,
@@ -799,7 +806,7 @@ class DialogueService:
         session: ExperimentSession,
         participant: Participant,
         content: str,
-    ) -> tuple[ChatMessage, ChatMessage]:
+    ) -> ChatMessage:
         DialogueService._assert_dialogue_available(session)
         if session.status == "chat_completed":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dialogue is already completed")
@@ -807,6 +814,9 @@ class DialogueService:
             DialogueService.start_or_get(db, session=session, participant=participant)
         if not content.strip():
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="message content is required")
+        messages = DialogueService.messages(db, session_id=session.id)
+        if messages and messages[-1].role == "participant":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI response is still pending")
         progress_before = DialogueService.update_progress(db, session=session)
         if progress_before["forced_to_finish"]:
             db.commit()
@@ -820,8 +830,52 @@ class DialogueService:
             content=content.strip(),
         )
         db.add(participant_message)
-        db.flush()
-        history = DialogueService._provider_history(db, session_id=session.id)
+        log_behavior(
+            db,
+            event_type="participant_message_saved",
+            participant=participant,
+            session=session,
+            stage=session.status,
+            metadata={"message_index": next_index},
+        )
+        DialogueService.update_progress(db, session=session)
+        db.commit()
+        db.refresh(participant_message)
+        db.refresh(session)
+        return participant_message
+
+    @staticmethod
+    def generate_assistant_response(
+        db: Session,
+        *,
+        session_id: str,
+        participant_message_id: str,
+    ) -> ChatMessage | None:
+        participant_message = db.get(ChatMessage, participant_message_id)
+        if participant_message is None or participant_message.role != "participant":
+            return None
+        session = db.get(ExperimentSession, session_id)
+        if session is None:
+            return None
+        participant = db.get(Participant, session.participant_id)
+        if participant is None:
+            return None
+
+        assistant_index = participant_message.message_index + 1
+        existing = db.scalar(
+            select(ChatMessage).where(
+                ChatMessage.experiment_session_id == session.id,
+                ChatMessage.message_index == assistant_index,
+            )
+        )
+        if existing is not None:
+            return existing
+
+        history = DialogueService._provider_history(
+            db,
+            session_id=session.id,
+            through_index=participant_message.message_index,
+        )
         settings = get_settings()
         try:
             result, primary_error = DialogueService._generate_with_fallback(
@@ -848,7 +902,7 @@ class DialogueService:
             assistant_message = ChatMessage(
                 experiment_session_id=session.id,
                 participant_code=participant.participant_code,
-                message_index=next_index + 1,
+                message_index=assistant_index,
                 role="assistant",
                 content=result.content,
                 provider_name=result.provider_name,
@@ -878,51 +932,26 @@ class DialogueService:
                     },
                 )
         except AIProviderError as exc:
-            timestamp = now_utc()
-            assistant_message = ChatMessage(
-                experiment_session_id=session.id,
-                participant_code=participant.participant_code,
-                message_index=next_index + 1,
-                role="assistant",
-                content="",
-                provider_name=settings.ai_provider_name,
-                model_name=settings.ai_model_name,
-                system_prompt_version=None,
-                generation_params={"prompt_mode": PROMPTLESS_DIALOGUE_MODE},
-                request_started_at=timestamp,
-                response_completed_at=timestamp,
-                duration_ms=0,
-                retry_count=0,
-                error_code=exc.code,
-                error_message_sanitized=exc.message,
-            )
-            db.add(assistant_message)
-            log_behavior(
-                db,
-                event_type="ai_call_failed",
-                participant=participant,
+            assistant_message = DialogueService._failure_assistant_message(
                 session=session,
-                stage=session.status,
-                metadata={
-                    "provider_name": settings.ai_provider_name,
-                    "model_name": settings.ai_model_name,
-                    "prompt_mode": PROMPTLESS_DIALOGUE_MODE,
-                    "retry_count": 0,
-                    "error_code": exc.code,
-                    "error_message_sanitized": exc.message,
-                },
+                participant=participant,
+                assistant_index=assistant_index,
+                settings=settings,
+                error_code=exc.code,
+                error_message=exc.message,
             )
-            db.commit()
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI provider call failed") from exc
+            DialogueService._log_ai_failure(db, session=session, participant=participant, message=assistant_message)
+        except Exception as exc:
+            assistant_message = DialogueService._failure_assistant_message(
+                session=session,
+                participant=participant,
+                assistant_index=assistant_index,
+                settings=settings,
+                error_code="ai_generation_failed",
+                error_message=sanitize_error_message(str(exc)),
+            )
+            DialogueService._log_ai_failure(db, session=session, participant=participant, message=assistant_message)
         db.add(assistant_message)
-        log_behavior(
-            db,
-            event_type="participant_message_saved",
-            participant=participant,
-            session=session,
-            stage=session.status,
-            metadata={"message_index": next_index},
-        )
         log_behavior(
             db,
             event_type="ai_response_saved",
@@ -930,18 +959,71 @@ class DialogueService:
             session=session,
             stage=session.status,
             metadata={
-                "message_index": next_index + 1,
+                "message_index": assistant_index,
                 "provider_name": assistant_message.provider_name,
                 "model_name": assistant_message.model_name,
                 "prompt_mode": PROMPTLESS_DIALOGUE_MODE,
+                "error_code": assistant_message.error_code,
             },
         )
         DialogueService.update_progress(db, session=session)
         db.commit()
-        db.refresh(participant_message)
         db.refresh(assistant_message)
         db.refresh(session)
-        return participant_message, assistant_message
+        return assistant_message
+
+    @staticmethod
+    def _failure_assistant_message(
+        *,
+        session: ExperimentSession,
+        participant: Participant,
+        assistant_index: int,
+        settings: Settings,
+        error_code: str,
+        error_message: str,
+    ) -> ChatMessage:
+        timestamp = now_utc()
+        return ChatMessage(
+            experiment_session_id=session.id,
+            participant_code=participant.participant_code,
+            message_index=assistant_index,
+            role="assistant",
+            content="AI 回复暂时生成失败，请稍后重试或联系研究者。",
+            provider_name=settings.ai_provider_name,
+            model_name=settings.ai_model_name,
+            system_prompt_version=None,
+            generation_params={"prompt_mode": PROMPTLESS_DIALOGUE_MODE},
+            request_started_at=timestamp,
+            response_completed_at=timestamp,
+            duration_ms=0,
+            retry_count=0,
+            error_code=error_code,
+            error_message_sanitized=error_message,
+        )
+
+    @staticmethod
+    def _log_ai_failure(
+        db: Session,
+        *,
+        session: ExperimentSession,
+        participant: Participant,
+        message: ChatMessage,
+    ) -> None:
+        log_behavior(
+            db,
+            event_type="ai_call_failed",
+            participant=participant,
+            session=session,
+            stage=session.status,
+            metadata={
+                "provider_name": message.provider_name,
+                "model_name": message.model_name,
+                "prompt_mode": PROMPTLESS_DIALOGUE_MODE,
+                "retry_count": 0,
+                "error_code": message.error_code,
+                "error_message_sanitized": message.error_message_sanitized,
+            },
+        )
 
     @staticmethod
     def update_progress(db: Session, *, session: ExperimentSession) -> dict[str, object]:
@@ -1003,6 +1085,10 @@ class DialogueService:
     @staticmethod
     def finish(db: Session, *, session: ExperimentSession, participant: Participant, decision: str) -> None:
         DialogueService._assert_dialogue_available(session)
+        messages = DialogueService.messages(db, session_id=session.id)
+        if messages and messages[-1].role == "participant":
+            db.commit()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI response is still pending")
         progress = DialogueService.update_progress(db, session=session)
         if session.status == "chat_completed":
             db.commit()
@@ -1082,12 +1168,16 @@ class DialogueService:
         return int(current or 0) + 1
 
     @staticmethod
-    def _provider_history(db: Session, *, session_id: str) -> list[dict[str, str]]:
+    def _provider_history(db: Session, *, session_id: str, through_index: int | None = None) -> list[dict[str, str]]:
         history = []
-        for message in DialogueService.messages(db, session_id=session_id):
+        query = select(ChatMessage).where(ChatMessage.experiment_session_id == session_id)
+        if through_index is not None:
+            query = query.where(ChatMessage.message_index <= through_index)
+        query = query.order_by(ChatMessage.message_index)
+        for message in db.scalars(query):
             if message.role == "participant":
                 history.append({"role": "user", "content": message.content})
-            elif message.role == "assistant" and not message.error_code:
+            elif message.role == "assistant" and message.content.strip() and not message.error_code:
                 history.append({"role": "assistant", "content": message.content})
         return history
 
@@ -1099,6 +1189,7 @@ class DialogueService:
         history: list[dict[str, str]],
         provider_thread_id: str | None,
     ) -> tuple[AIProviderResult, AIProviderError | None]:
+        started = time.perf_counter()
         try:
             return (
                 create_ai_provider(settings).generate(
@@ -1109,7 +1200,12 @@ class DialogueService:
                 None,
             )
         except AIProviderError as primary_error:
-            fallback_settings = DialogueService._fallback_settings(settings)
+            elapsed = time.perf_counter() - started
+            remaining_timeout = max(1.0, settings.ai_response_sla_seconds - elapsed)
+            fallback_settings = DialogueService._fallback_settings(
+                settings,
+                timeout_seconds=min(settings.ai_fallback_timeout_seconds, remaining_timeout),
+            )
             if fallback_settings is None:
                 raise
             try:
@@ -1131,7 +1227,7 @@ class DialogueService:
                 ) from fallback_error
 
     @staticmethod
-    def _fallback_settings(settings: Settings) -> Settings | None:
+    def _fallback_settings(settings: Settings, *, timeout_seconds: float | None = None) -> Settings | None:
         if not settings.ai_fallback_enabled:
             return None
         provider_name = settings.ai_fallback_provider_name.strip()
@@ -1147,14 +1243,17 @@ class DialogueService:
             AI_MODEL_NAME=settings.ai_fallback_model_name,
             AI_TEMPERATURE=settings.ai_fallback_temperature,
             AI_MAX_TOKENS=settings.ai_fallback_max_tokens,
-            AI_TIMEOUT_SECONDS=min(settings.ai_fallback_timeout_seconds, settings.ai_response_sla_seconds),
+            AI_TIMEOUT_SECONDS=timeout_seconds or settings.ai_fallback_timeout_seconds,
             AI_RESPONSE_SLA_SECONDS=settings.ai_response_sla_seconds,
             CODEX_COMMAND=settings.codex_command,
             CODEX_APPROVAL_POLICY=settings.codex_approval_policy,
             CODEX_SANDBOX=settings.codex_sandbox,
             CODEX_REASONING_EFFORT=settings.codex_reasoning_effort,
             CODEX_READ_TIMEOUT_SECONDS=settings.codex_read_timeout_seconds,
-            CODEX_TURN_TIMEOUT_SECONDS=min(settings.codex_turn_timeout_seconds, settings.ai_response_sla_seconds),
+            CODEX_TURN_TIMEOUT_SECONDS=min(
+                settings.codex_turn_timeout_seconds,
+                timeout_seconds or settings.ai_response_sla_seconds,
+            ),
             CODEX_CWD=settings.codex_cwd,
         )
 

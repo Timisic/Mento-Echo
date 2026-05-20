@@ -321,7 +321,7 @@ describe('Mentor Echo 前端 UI', () => {
     expect(screen.queryByText('请确认接下来的提问仍围绕专业选择、未来方向、升学或就业展开。')).not.toBeInTheDocument();
     expect(screen.getByText('消息数：3 / 6')).toBeInTheDocument();
     expect(screen.getByText('对话时长：04:21 / 10:00')).toBeInTheDocument();
-    expect(screen.getByText('60 分钟后页面会提示可以休息退出；后端不会因时间到达而强制结束。')).toBeInTheDocument();
+    expect(screen.queryByText('60 分钟后页面会提示可以休息退出；后端不会因时间到达而强制结束。')).not.toBeInTheDocument();
     expect(screen.queryByText(/上限：.*60:00/)).not.toBeInTheDocument();
     expect(screen.getByText('尚未达到完成条件')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '暂不能进入后测' })).toBeDisabled();

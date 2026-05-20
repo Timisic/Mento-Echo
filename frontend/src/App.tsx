@@ -80,6 +80,7 @@ function userFacingError(error: unknown): string {
   if (message.includes('Invalid credentials')) return '研究者账号或密码不正确。';
   if (message.includes('Admin token required')) return '研究者登录已失效，请重新登录。';
   if (message.includes('Participant code not recognized')) return '未找到该被试编号，请检查后重试或联系研究者。';
+  if (message.includes('AI response is still pending')) return '上一条回复仍在生成，请稍候。';
   if (message.includes('Participant self-registration is disabled')) return '暂时不能自动生成编号，请联系研究者。';
   if (message.includes('Post-survey is available only after dialogue completion')) {
     return '后测问卷会在 AI 对话完成后开放。';
@@ -90,6 +91,11 @@ function userFacingError(error: unknown): string {
   }
   if (message.includes('Experiment Session not found')) return '未找到实验进度，请重新输入被试编号。';
   return '操作失败，请稍后重试或联系研究者。';
+}
+
+function hasPendingAssistantResponse(dialogue: DialogueState | null): boolean {
+  const lastMessage = dialogue?.messages.at(-1);
+  return lastMessage?.role === 'participant';
 }
 
 function App() {
@@ -183,9 +189,11 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
       if (nextStep === 'dialogue') {
         const state = await fetchDialogue(result.session.experiment_session_id);
         setDialogue(state);
+        setAssistantThinking(hasPendingAssistantResponse(state));
         setSession({ ...result.session, status: state.status });
       } else {
         setDialogue(null);
+        setAssistantThinking(false);
       }
       setStatusMessage('已恢复你的实验进度，请按照页面提示继续。');
     } catch (entryError) {
@@ -275,6 +283,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
       const assignedSession = await ensureAssignment(session);
       const state = await fetchDialogue(assignedSession.experiment_session_id);
       setDialogue(state);
+      setAssistantThinking(hasPendingAssistantResponse(state));
       setStep('dialogue');
       setSession({ ...assignedSession, status: state.status });
     } catch (dialogueError) {
@@ -298,7 +307,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
       const state = await fetchDialogue(session.experiment_session_id);
       setDialogue(state);
       setPendingUserMessage(null);
-      setAssistantThinking(false);
+      setAssistantThinking(hasPendingAssistantResponse(state));
       setSession({ ...session, status: state.status });
     } catch (sendError) {
       setError(userFacingError(sendError));
@@ -323,6 +332,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
       } else {
         const state = await fetchDialogue(session.experiment_session_id);
         setDialogue(state);
+        setAssistantThinking(hasPendingAssistantResponse(state));
         setStatusMessage('已记录你的选择，可以继续围绕相关点展开。');
       }
     } catch (finishError) {
@@ -337,6 +347,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
     try {
       const state = await fetchDialogue(session.experiment_session_id);
       setDialogue(state);
+      setAssistantThinking(hasPendingAssistantResponse(state));
       setSession((current) => (current ? { ...current, status: state.status } : current));
     } catch {
       // A heartbeat failure should not interrupt an active participant turn.
@@ -979,9 +990,9 @@ function DialoguePage({
   useEffect(() => {
     const timer = window.setInterval(() => {
       onRefresh();
-    }, 30000);
+    }, assistantThinking ? 2000 : 30000);
     return () => window.clearInterval(timer);
-  }, [onRefresh]);
+  }, [assistantThinking, onRefresh]);
 
   const reminderKey = useMemo(() => {
     if (!progress.reminder_due) return null;
@@ -1075,10 +1086,11 @@ function DialoguePage({
                 value={input}
                 onChange={(event) => onInput(event.target.value)}
                 placeholder="请输入你想发送的内容"
+                disabled={busy || assistantThinking}
                 rows={2}
               />
             </label>
-            <button type="submit" className="primary-action" disabled={busy || !input.trim()}>
+            <button type="submit" className="primary-action" disabled={busy || assistantThinking || !input.trim()}>
               发送
             </button>
           </form>
@@ -1092,34 +1104,33 @@ function DialoguePage({
             </p>
             <p>对话时长：{elapsed} / {required}</p>
             <p>回合上限：{progress.max_participant_turns} 个有效回合</p>
-            <p>60 分钟后页面会提示可以休息退出；后端不会因时间到达而强制结束。</p>
             {elapsedSeconds >= progress.max_elapsed_seconds ? <p>已超过 {maximum}，如感到疲劳可以结束或联系研究者。</p> : null}
             <p>{progress.eligible_to_finish ? '已达到完成条件' : '尚未达到完成条件'}</p>
           </div>
           {progress.forced_to_finish ? (
-            <div className="finish-choices" role="group" aria-label="强制结束">
+            <div className="finish-choices" role="group" aria-label="结束提示">
               <p>{forceReasonText}</p>
-              <button type="button" className="primary-action" disabled={busy} onClick={() => onFinish('can_end')}>
+              <button type="button" className="primary-action" disabled={busy || assistantThinking} onClick={() => onFinish('can_end')}>
                 结束对话并进入后测
               </button>
             </div>
           ) : showContinueRelatedFinish ? (
             <div className="finish-choices" role="group" aria-label="相关点讨论结束确认">
               <p>这个相关点已经继续讨论了一段时间。你现在是否可以结束本次对话？</p>
-              <button type="button" className="primary-action" disabled={busy} onClick={() => onFinish('can_end')}>
+              <button type="button" className="primary-action" disabled={busy || assistantThinking} onClick={() => onFinish('can_end')}>
                 A 可以结束
               </button>
             </div>
           ) : showInitialFinishPrompt ? (
             <div className="finish-choices" role="group" aria-label="结束确认">
               <p>你现在是否觉得这次对话已经足够帮助你梳理当前问题？</p>
-              <button type="button" className="primary-action" disabled={busy} onClick={() => onFinish('can_end')}>
+              <button type="button" className="primary-action" disabled={busy || assistantThinking} onClick={() => onFinish('can_end')}>
                 A 可以结束
               </button>
-              <button type="button" disabled={busy} onClick={() => onFinish('continue_related')}>
+              <button type="button" disabled={busy || assistantThinking} onClick={() => onFinish('continue_related')}>
                 B 还想继续讨论一个相关点
               </button>
-              <button type="button" disabled={busy} onClick={() => onFinish('not_core')}>
+              <button type="button" disabled={busy || assistantThinking} onClick={() => onFinish('not_core')}>
                 C 还没有聊到核心问题
               </button>
             </div>
@@ -1128,7 +1139,7 @@ function DialoguePage({
               暂不能进入后测
             </button>
           )}
-          <button type="button" className="secondary-action" disabled={busy} onClick={() => onFinish('early_stop')}>
+          <button type="button" className="secondary-action" disabled={busy || assistantThinking} onClick={() => onFinish('early_stop')}>
             我不想继续，提前结束
           </button>
         </aside>

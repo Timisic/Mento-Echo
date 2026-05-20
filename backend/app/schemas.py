@@ -289,7 +289,7 @@ class SendMessageRequest(BaseModel):
 
 class SendMessageResponse(BaseModel):
     participant_message: ChatMessageResponse
-    assistant_message: ChatMessageResponse
+    assistant_message: ChatMessageResponse | None = None
     progress: DialogueProgressResponse
     status: SessionStatus
 

@@ -6,11 +6,21 @@ from pathlib import Path
 
 
 class SpaHandler(SimpleHTTPRequestHandler):
-    def do_GET(self) -> None:
+    def _map_spa_path(self) -> None:
+        if self.path == "/favicon.ico":
+            self.path = "/favicon.svg"
+            return
         requested = Path(self.translate_path(self.path))
         if not requested.exists() and "." not in Path(self.path).name:
             self.path = "/index.html"
+
+    def do_GET(self) -> None:
+        self._map_spa_path()
         super().do_GET()
+
+    def do_HEAD(self) -> None:
+        self._map_spa_path()
+        super().do_HEAD()
 
 
 def main() -> None:

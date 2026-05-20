@@ -26,7 +26,11 @@ if [ ! -d .venv ]; then
   python3 -m venv .venv
 fi
 source .venv/bin/activate
-python -m pip install -e 'backend[dev]'
+python - <<'PY' || python -m pip install --upgrade pip setuptools wheel || python -m pip install --index-url https://pypi.org/simple --upgrade pip setuptools wheel
+import setuptools  # noqa: F401
+import wheel  # noqa: F401
+PY
+python -m pip install --no-build-isolation -e 'backend[dev]' || python -m pip install --index-url https://pypi.org/simple --no-build-isolation -e 'backend[dev]'
 
 docker compose up -d db
 for i in $(seq 1 40); do

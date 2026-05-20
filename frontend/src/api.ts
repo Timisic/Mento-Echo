@@ -243,7 +243,11 @@ export function fetchDialogue(sessionId: string): Promise<DialogueState> {
 export function sendDialogueMessage(
   sessionId: string,
   content: string
-): Promise<{ progress: DialogueState['progress']; status: string }> {
+): Promise<{
+  progress: DialogueState['progress'];
+  status: string;
+  assistant_message: DialogueState['messages'][number] | null;
+}> {
   return request(`/api/participant/sessions/${sessionId}/dialogue/messages`, {
     method: 'POST',
     body: JSON.stringify({ content })

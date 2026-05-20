@@ -104,7 +104,9 @@ class OpenAICompatibleProvider:
             with urllib.request.urlopen(request, timeout=self.settings.ai_timeout_seconds) as response:
                 data = json.loads(response.read().decode("utf-8"))
             content = data["choices"][0]["message"]["content"]
-        except (urllib.error.URLError, KeyError, IndexError, json.JSONDecodeError) as exc:
+        except TimeoutError as exc:
+            raise AIProviderError("provider_timeout", sanitize_error_message(str(exc))) from exc
+        except (urllib.error.URLError, OSError, KeyError, IndexError, json.JSONDecodeError) as exc:
             raise AIProviderError("provider_error", sanitize_error_message(str(exc))) from exc
         completed = datetime.now(UTC)
         return AIProviderResult(
@@ -308,6 +310,12 @@ class CodexAppServerProvider:
                 params = message.get("params") or {}
                 if method == "item/agentMessage/delta" and params.get("threadId") == thread_id and params.get("turnId") == turn_id:
                     content_parts.append(str(params.get("delta") or ""))
+                if method == "item/completed" and params.get("threadId") == thread_id and params.get("turnId") == turn_id:
+                    item = params.get("item") or {}
+                    if item.get("type") == "agentMessage":
+                        completed_content = str(item.get("text") or "").strip()
+                        if completed_content:
+                            return completed_content
                 if method == "turn/completed" and params.get("threadId") == thread_id:
                     turn = params.get("turn") or {}
                     if turn.get("id") == turn_id:

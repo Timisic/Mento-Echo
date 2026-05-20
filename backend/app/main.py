@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+import logging
+
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.ai_provider import AIProviderError
 from app.config import get_settings
 from app.db import database_health, get_session
 from app.export_service import build_export_zip
@@ -56,6 +59,7 @@ from app.services import (
     to_status_row,
 )
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 app = FastAPI(title="Mentor Echo API", version="0.1.0")
 app.add_middleware(
@@ -81,6 +85,17 @@ async def http_exception_with_cors(request: Request, exc: HTTPException) -> JSON
         status_code=exc.status_code,
         content={"detail": exc.detail},
         headers=exc.headers,
+    )
+    _apply_cors_headers(request, response)
+    return response
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_with_cors(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled API exception", exc_info=exc)
+    response = JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal server error"},
     )
     _apply_cors_headers(request, response)
     return response
@@ -129,6 +144,39 @@ def admin_login(payload: AdminLoginRequest, db: Session = Depends(get_session)) 
     )
     db.commit()
     return AdminLoginResponse(token=settings.admin_token)
+
+
+@app.get("/api/admin/ai-provider/health")
+def ai_provider_health(_: str = Depends(require_admin)) -> JSONResponse:
+    settings = get_settings()
+    try:
+        result, primary_error = DialogueService._generate_with_fallback(
+            settings=settings,
+            system_prompt="",
+            history=[{"role": "user", "content": "请只回复：ok"}],
+            provider_thread_id=None,
+        )
+    except AIProviderError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "ok": False,
+                "provider_name": settings.ai_provider_name,
+                "model_name": settings.ai_model_name,
+                "error_code": exc.code,
+                "error_message_sanitized": exc.message,
+            },
+        )
+    return JSONResponse(
+        content={
+            "ok": True,
+            "provider_name": result.provider_name,
+            "model_name": result.model_name,
+            "duration_ms": result.duration_ms,
+            "fallback_triggered": primary_error is not None,
+            "primary_error_code": primary_error.code if primary_error else None,
+        }
+    )
 
 
 @app.post("/api/admin/participants/import", response_model=ParticipantImportResponse)
@@ -415,6 +463,21 @@ def _chat_message_response(message: ChatMessage) -> ChatMessageResponse:
     )
 
 
+def _generate_assistant_message_background(session_id: str, participant_message_id: str) -> None:
+    session_generator = get_session()
+    db = next(session_generator)
+    try:
+        DialogueService.generate_assistant_response(
+            db,
+            session_id=session_id,
+            participant_message_id=participant_message_id,
+        )
+    except Exception:
+        logger.exception("Failed to generate assistant response in background")
+    finally:
+        session_generator.close()
+
+
 def _progress_response(progress: dict[str, object]) -> DialogueProgressResponse:
     return DialogueProgressResponse(
         participant_turn_count=int(progress["participant_turn_count"]),
@@ -542,17 +605,19 @@ def get_dialogue(session_id: str, db: Session = Depends(get_session)) -> Dialogu
 def send_dialogue_message(
     session_id: str,
     payload: SendMessageRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_session),
 ) -> SendMessageResponse:
     session, participant = _get_session_and_participant(db, session_id)
-    participant_message, assistant_message = DialogueService.send_message(
+    participant_message = DialogueService.send_message(
         db, session=session, participant=participant, content=payload.content
     )
+    background_tasks.add_task(_generate_assistant_message_background, session.id, participant_message.id)
     progress = DialogueService.update_progress(db, session=session)
     db.commit()
     return SendMessageResponse(
         participant_message=_chat_message_response(participant_message),
-        assistant_message=_chat_message_response(assistant_message),
+        assistant_message=None,
         progress=_progress_response(progress),
         status=session.status,
     )
