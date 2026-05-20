@@ -199,7 +199,7 @@ function jsonResponse(body: unknown) {
   } as Response);
 }
 
-describe('Mentor Echo 前端试点 UI', () => {
+describe('Mentor Echo 前端 UI', () => {
   beforeEach(() => {
     vi.stubGlobal('URL', {
       createObjectURL: vi.fn(() => 'blob:export'),
@@ -234,7 +234,7 @@ describe('Mentor Echo 前端试点 UI', () => {
     expect(screen.queryByText(/后端|数据库/)).not.toBeInTheDocument();
   });
 
-  it('被试路径隐藏内部字段，并用分组问卷和对话进度推进', async () => {
+  it('被试路径隐藏内部字段，并用问卷和对话进度推进', async () => {
     let resolveSendMessage: ((value: Response) => void) | undefined;
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input).replace(baseUrl, '');
@@ -281,6 +281,7 @@ describe('Mentor Echo 前端试点 UI', () => {
     expect(screen.queryByText('session-1')).not.toBeInTheDocument();
     expect(screen.queryByText('实验组')).not.toBeInTheDocument();
     expect(screen.queryByText('导入指定')).not.toBeInTheDocument();
+    expect(screen.queryByText(/研究一|预实验|分组|grouped|prompt|provider|thread|turn/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '我已了解，开始' }));
     expect(await screen.findByRole('heading', { name: '基本信息' })).toBeInTheDocument();
@@ -347,16 +348,18 @@ describe('Mentor Echo 前端试点 UI', () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: '我是研究者，进入管理后台' }));
-    expect(screen.getByRole('heading', { name: '试点管理后台' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '管理后台' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '导入被试编号' })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('研究者密码'), { target: { value: 'change-me-admin-password' } });
     fireEvent.click(screen.getByRole('button', { name: '登录管理后台' }));
 
-    expect(await screen.findByRole('heading', { name: '试点进度仪表盘' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '进度仪表盘' })).toBeInTheDocument();
     expect(screen.getByText('总被试数')).toBeInTheDocument();
     expect(screen.getByText('PILOT001')).toBeInTheDocument();
+    expect(screen.queryByLabelText('预设分组')).not.toBeInTheDocument();
     expect(screen.queryByText('完整原始聊天内容')).not.toBeInTheDocument();
+    expect(screen.queryByText(/研究一|预实验|预设分组|实验组|控制组|grouped/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '导出 ZIP' }));
     expect(await screen.findByRole('dialog')).toHaveTextContent('chat_messages.jsonl');

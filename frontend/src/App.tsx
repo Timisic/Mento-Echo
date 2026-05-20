@@ -48,21 +48,15 @@ const statusLabels: Record<string, string> = {
   excluded: '已排除'
 };
 
-const groupLabels: Record<string, string> = {
-  pilot: '研究一预实验',
-  experiment: '实验组',
-  control: '控制组'
-};
-
 const sourceLabels: Record<string, string> = {
-  pilot_single: '单组预实验',
-  imported: '导入指定',
-  randomized: '系统随机'
+  pilot_single: '平台生成',
+  imported: '研究者导入',
+  randomized: '系统处理'
 };
 
 function labelFor(labels: Record<string, string>, value: string | null | undefined): string {
   if (!value) return '暂无';
-  return labels[value] ?? value;
+  return labels[value] ?? '未识别';
 }
 
 function formatDuration(totalSeconds: number | null | undefined): string {
@@ -85,6 +79,8 @@ function userFacingError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes('Invalid credentials')) return '研究者账号或密码不正确。';
   if (message.includes('Admin token required')) return '研究者登录已失效，请重新登录。';
+  if (message.includes('Participant code not recognized')) return '未找到该被试编号，请检查后重试或联系研究者。';
+  if (message.includes('Participant self-registration is disabled')) return '暂时不能自动生成编号，请联系研究者。';
   if (message.includes('Post-survey is available only after dialogue completion')) {
     return '后测问卷会在 AI 对话完成后开放。';
   }
@@ -93,7 +89,7 @@ function userFacingError(error: unknown): string {
     return '系统正在准备 AI 对话，请稍后重试。';
   }
   if (message.includes('Experiment Session not found')) return '未找到实验进度，请重新输入被试编号。';
-  return message || '操作失败，请稍后重试。';
+  return '操作失败，请稍后重试或联系研究者。';
 }
 
 function App() {
@@ -1293,10 +1289,7 @@ function AdminFlow({ onBack }: { onBack: () => void }) {
     setError('');
     try {
       const participantCode = String(data.get('participant_code') ?? '').trim();
-      const assignedGroup = String(data.get('assigned_group') ?? '');
-      const result = await importParticipants(token, [
-        { participant_code: participantCode, assigned_group: assignedGroup || undefined }
-      ]);
+      const result = await importParticipants(token, [{ participant_code: participantCode }]);
       setMessage(`已导入 ${result.imported_count} 个被试编号。`);
       event.currentTarget.reset();
       await refreshStatus();
@@ -1343,7 +1336,7 @@ function AdminFlow({ onBack }: { onBack: () => void }) {
     <section className="flow admin-flow" aria-labelledby="admin-title">
       <FlowHeader
         eyebrow="研究者管理端"
-        title="试点管理后台"
+        title="管理后台"
         description="登录后可导入编号、查看进度、执行重置或排除，并导出研究数据。"
         onBack={onBack}
       />
@@ -1404,7 +1397,7 @@ function ParticipantImportPanel({
       <div className="section-heading">
         <div>
           <h2 id="import-heading">导入被试编号</h2>
-          <p>当前研究一预实验支持被试自助生成编号。手动导入仍可用于指定编号；预设分组仅在后续 grouped 模式中生效。</p>
+          <p>被试可以在入口自行生成编号。这里仅用于补录或指定匿名编号。</p>
         </div>
         <button type="button" className="secondary-action" onClick={onRefresh} disabled={busy}>
           刷新仪表盘
@@ -1414,14 +1407,6 @@ function ParticipantImportPanel({
         <label>
           被试编号
           <input name="participant_code" required placeholder="例如 PILOT001" />
-        </label>
-        <label>
-          预设分组
-          <select name="assigned_group" defaultValue="">
-            <option value="">研究一预实验不预设</option>
-            <option value="experiment">实验组</option>
-            <option value="control">控制组</option>
-          </select>
         </label>
         <button type="submit" className="primary-action" disabled={busy}>
           导入
@@ -1465,8 +1450,8 @@ function AdminDashboard({
     <section className="management-section" aria-labelledby="dashboard-heading">
       <div className="section-heading">
         <div>
-          <h2 id="dashboard-heading">试点进度仪表盘</h2>
-          <p>默认只显示进度、研究模式和操作指标，不内联展示完整原始聊天。</p>
+          <h2 id="dashboard-heading">进度仪表盘</h2>
+          <p>默认只显示完成进度和操作指标，不内联展示完整原始聊天。</p>
         </div>
         <div className="toolbar">
           <button type="button" className="secondary-action" onClick={onRefresh} disabled={busy}>
@@ -1490,8 +1475,7 @@ function AdminDashboard({
           <thead>
             <tr>
               <th>被试编号</th>
-              <th>分组</th>
-              <th>来源</th>
+              <th>录入方式</th>
               <th>状态</th>
               <th>前测</th>
               <th>对话轮次</th>
@@ -1505,13 +1489,12 @@ function AdminDashboard({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={11}>暂无被试记录。被试自助生成或研究者导入编号后会显示在这里。</td>
+                <td colSpan={10}>暂无被试记录。被试自助生成或研究者导入编号后会显示在这里。</td>
               </tr>
             ) : (
               rows.map((row) => (
                 <tr key={row.participant_code}>
                   <td>{row.participant_code}</td>
-                  <td>{labelFor(groupLabels, row.group)}</td>
                   <td>{labelFor(sourceLabels, row.assignment_source)}</td>
                   <td>{labelFor(statusLabels, row.status)}</td>
                   <td>{row.pre_survey_submitted ? '已提交' : '未提交'}</td>
