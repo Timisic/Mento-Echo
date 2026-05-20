@@ -140,6 +140,7 @@ li {
   padding-block: var(--space-md) var(--space-xl);
 }
 
+/* Dialogue pages intentionally own viewport containment on desktop; mobile rules below release it so the chat can stay primary while the full page scrolls. */
 .app-shell:has(.dialogue-flow) {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -902,14 +903,37 @@ td {
     padding-block: var(--space-xs);
   }
 
+  .app-shell:has(.dialogue-flow) {
+    block-size: auto;
+    min-block-size: 100dvh;
+    overflow: visible;
+  }
+
+  .dialogue-flow,
+  .dialogue-layout,
   .dialogue-shell {
-    grid-template-rows: auto minmax(0, 1fr);
+    overflow: visible;
+  }
+
+  .dialogue-layout {
+    grid-template-rows: auto auto;
+  }
+
+  .dialogue-shell {
+    grid-template-rows: minmax(58svh, auto) auto;
     gap: var(--space-md);
+    align-items: start;
+  }
+
+  .chat-panel {
+    order: 1;
+    min-block-size: clamp(520px, 68svh, 760px);
   }
 
   .dialogue-sidebar {
-    order: -1;
+    order: 2;
     padding: var(--space-md);
+    overflow: visible;
   }
 
   .dialogue-progress {
@@ -961,11 +985,21 @@ td {
 
   .app-shell:has(.dialogue-flow) {
     inline-size: 100%;
+    block-size: auto;
+    min-block-size: 100svh;
+    overflow: visible;
     padding: var(--space-xs);
   }
 
   .dialogue-layout {
     gap: var(--space-sm);
+    overflow: visible;
+  }
+
+  .dialogue-shell {
+    grid-template-rows: minmax(70svh, auto) auto;
+    gap: var(--space-sm);
+    overflow: visible;
   }
 
   .dialogue-layout .section-heading {
@@ -982,6 +1016,12 @@ td {
   }
 
   .chat-panel {
+    min-block-size: clamp(540px, 76svh, 820px);
+    padding: var(--space-sm);
+  }
+
+  .dialogue-sidebar {
+    gap: var(--space-sm);
     padding: var(--space-sm);
   }
 
@@ -992,7 +1032,20 @@ td {
   }
 
   .dialogue-progress {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-xs) var(--space-sm);
+  }
+
+  .dialogue-progress h3 {
+    grid-column: 1 / -1;
+  }
+
+  .dialogue-progress p,
+  .finish-choices p {
+    font-size: 0.9rem;
+  }
+
+  .finish-choices {
     gap: var(--space-xs);
   }
 }
