@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 
 const baseUrl = 'http://localhost:8000';
+const scrollIntoViewMock = vi.fn();
 
 const session = {
   experiment_session_id: 'session-1',
@@ -210,6 +211,11 @@ function errorResponse(detail: unknown, status = 500) {
 
 describe('Mentor Echo 前端 UI', () => {
   beforeEach(() => {
+    scrollIntoViewMock.mockClear();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock
+    });
     vi.stubGlobal('URL', {
       createObjectURL: vi.fn(() => 'blob:export'),
       revokeObjectURL: vi.fn()
@@ -298,9 +304,11 @@ describe('Mentor Echo 前端 UI', () => {
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '男' }));
     fireEvent.change(screen.getByPlaceholderText('请输入年龄'), { target: { value: '20' } });
+    scrollIntoViewMock.mockClear();
     fireEvent.click(screen.getByRole('button', { name: '下一页' }));
 
     expect(await screen.findByRole('heading', { name: '身份困扰' })).toBeInTheDocument();
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: 'start', inline: 'nearest' });
     fireEvent.click(screen.getAllByRole('radio')[2]);
     fireEvent.click(screen.getByRole('button', { name: '下一页' }));
 

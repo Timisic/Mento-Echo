@@ -253,7 +253,7 @@ def test_dialogue_falls_back_without_exposing_provider_to_participant(client, ad
             AI_MODEL_NAME="gpt-5.5",
             AI_FALLBACK_ENABLED=True,
             AI_FALLBACK_PROVIDER_NAME="deepseek",
-            AI_FALLBACK_MODEL_NAME="deepseek-chat",
+            AI_FALLBACK_MODEL_NAME="deepseek-v4-flash",
             AI_FALLBACK_API_KEY="test-key",
         ),
     )
@@ -272,7 +272,7 @@ def test_dialogue_falls_back_without_exposing_provider_to_participant(client, ad
     messages = db_session.query(ChatMessage).filter_by(experiment_session_id=session_id).order_by(ChatMessage.message_index).all()
     assert messages[1].content == "fallback response"
     assert messages[1].provider_name == "deepseek"
-    assert messages[1].model_name == "deepseek-chat"
+    assert messages[1].model_name == "deepseek-v4-flash"
     assert messages[1].system_prompt_version is None
     assert messages[1].generation_params["prompt_mode"] == PROMPTLESS_DIALOGUE_MODE
     assert messages[1].generation_params["fallback_triggered"] is True
@@ -299,7 +299,7 @@ def test_fallback_timeout_uses_remaining_sla_budget(monkeypatch):
             return AIProviderResult(
                 content="fallback response",
                 provider_name="deepseek",
-                model_name="deepseek-chat",
+                model_name="deepseek-v4-flash",
                 generation_params={},
                 request_started_at=timestamp,
                 response_completed_at=timestamp,
@@ -311,7 +311,7 @@ def test_fallback_timeout_uses_remaining_sla_budget(monkeypatch):
             return PrimaryProvider()
         return FallbackProvider(settings)
 
-    ticks = iter([100.0, 124.0])
+    ticks = iter([100.0, 124.0, 124.0])
     monkeypatch.setattr("app.services.time.perf_counter", lambda: next(ticks))
     monkeypatch.setattr("app.services.create_ai_provider", provider_factory)
 
@@ -334,6 +334,256 @@ def test_fallback_timeout_uses_remaining_sla_budget(monkeypatch):
     assert primary_error is not None
     assert seen_timeouts == [6.0]
 
+
+
+def test_default_fallback_model_uses_current_deepseek_v4_flash():
+    assert Settings.model_fields["ai_fallback_model_name"].default == "deepseek-v4-flash"
+
+
+def test_fallback_retries_transient_provider_error_before_success(monkeypatch):
+    fallback_attempts: list[int] = []
+
+    class PrimaryProvider:
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            raise AIProviderError("codex_timeout", "primary timed out")
+
+    class FallbackProvider:
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            from app.ai_provider import AIProviderResult
+
+            fallback_attempts.append(len(fallback_attempts) + 1)
+            if len(fallback_attempts) == 1:
+                raise AIProviderError("provider_timeout", "temporary fallback timeout")
+            timestamp = now_utc()
+            return AIProviderResult(
+                content="fallback response after retry",
+                provider_name="deepseek",
+                model_name="deepseek-v4-flash",
+                generation_params={"temperature": 0.3},
+                request_started_at=timestamp,
+                response_completed_at=timestamp,
+                duration_ms=1,
+            )
+
+    def provider_factory(settings):
+        if settings.ai_provider_name == "codex":
+            return PrimaryProvider()
+        return FallbackProvider()
+
+    monkeypatch.setattr("app.services.create_ai_provider", provider_factory)
+
+    result, primary_error = DialogueService._generate_with_fallback(
+        settings=Settings(
+            AI_PROVIDER_NAME="codex",
+            AI_MODEL_NAME="gpt-5.5",
+            AI_RESPONSE_SLA_SECONDS=30,
+            AI_FALLBACK_ENABLED=True,
+            AI_FALLBACK_PROVIDER_NAME="deepseek",
+            AI_FALLBACK_MODEL_NAME="deepseek-v4-flash",
+            AI_FALLBACK_API_KEY="test-key",
+            AI_FALLBACK_MAX_ATTEMPTS=2,
+        ),
+        system_prompt="",
+        history=[{"role": "user", "content": "hello"}],
+        provider_thread_id=None,
+    )
+
+    assert primary_error is not None
+    assert primary_error.code == "codex_timeout"
+    assert result.content == "fallback response after retry"
+    assert result.provider_name == "deepseek"
+    assert result.retry_count == 1
+    assert result.generation_params["retry_errors"][0]["code"] == "provider_timeout"
+    assert fallback_attempts == [1, 2]
+
+
+
+def test_fallback_retry_recomputes_timeout_against_cumulative_sla(monkeypatch):
+    seen_timeouts: list[float] = []
+    fallback_attempts: list[int] = []
+
+    class PrimaryProvider:
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            raise AIProviderError("codex_timeout", "primary timed out")
+
+    class FallbackProvider:
+        def __init__(self, settings):
+            seen_timeouts.append(settings.ai_timeout_seconds)
+
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            from app.ai_provider import AIProviderResult
+
+            fallback_attempts.append(len(fallback_attempts) + 1)
+            if len(fallback_attempts) == 1:
+                raise AIProviderError("provider_timeout", "temporary fallback timeout")
+            timestamp = now_utc()
+            return AIProviderResult(
+                content="fallback response",
+                provider_name="deepseek",
+                model_name="deepseek-v4-flash",
+                generation_params={},
+                request_started_at=timestamp,
+                response_completed_at=timestamp,
+                duration_ms=1,
+            )
+
+    def provider_factory(settings):
+        if settings.ai_provider_name == "codex":
+            return PrimaryProvider()
+        return FallbackProvider(settings)
+
+    ticks = iter([100.0, 124.0, 124.0, 129.5])
+    monkeypatch.setattr("app.services.time.perf_counter", lambda: next(ticks))
+    monkeypatch.setattr("app.services.create_ai_provider", provider_factory)
+
+    result, primary_error = DialogueService._generate_with_fallback(
+        settings=Settings(
+            AI_PROVIDER_NAME="codex",
+            AI_MODEL_NAME="gpt-5.5",
+            AI_RESPONSE_SLA_SECONDS=30,
+            AI_FALLBACK_ENABLED=True,
+            AI_FALLBACK_PROVIDER_NAME="deepseek",
+            AI_FALLBACK_API_KEY="test-key",
+            AI_FALLBACK_TIMEOUT_SECONDS=30,
+            AI_FALLBACK_MAX_ATTEMPTS=2,
+        ),
+        system_prompt="",
+        history=[{"role": "user", "content": "hello"}],
+        provider_thread_id=None,
+    )
+
+    assert result.provider_name == "deepseek"
+    assert primary_error is not None
+    assert seen_timeouts == [6.0, 0.5]
+    assert fallback_attempts == [1, 2]
+
+
+def test_fallback_retry_stops_when_cumulative_sla_budget_is_exhausted(monkeypatch):
+    fallback_attempts: list[int] = []
+
+    class PrimaryProvider:
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            raise AIProviderError("codex_timeout", "primary timed out")
+
+    class FallbackProvider:
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            fallback_attempts.append(len(fallback_attempts) + 1)
+            raise AIProviderError("provider_timeout", "temporary fallback timeout")
+
+    def provider_factory(settings):
+        if settings.ai_provider_name == "codex":
+            return PrimaryProvider()
+        return FallbackProvider()
+
+    ticks = iter([100.0, 124.0, 124.0, 130.1])
+    monkeypatch.setattr("app.services.time.perf_counter", lambda: next(ticks))
+    monkeypatch.setattr("app.services.create_ai_provider", provider_factory)
+
+    with pytest.raises(AIProviderError) as exc:
+        DialogueService._generate_with_fallback(
+            settings=Settings(
+                AI_PROVIDER_NAME="codex",
+                AI_MODEL_NAME="gpt-5.5",
+                AI_RESPONSE_SLA_SECONDS=30,
+                AI_FALLBACK_ENABLED=True,
+                AI_FALLBACK_PROVIDER_NAME="deepseek",
+                AI_FALLBACK_API_KEY="test-key",
+                AI_FALLBACK_TIMEOUT_SECONDS=30,
+                AI_FALLBACK_MAX_ATTEMPTS=2,
+            ),
+            system_prompt="",
+            history=[{"role": "user", "content": "hello"}],
+            provider_thread_id=None,
+        )
+
+    assert exc.value.code == "ai_fallback_failed"
+    assert "Fallback retry budget exhausted" in exc.value.message
+    assert fallback_attempts == [1]
+
+
+def test_fallback_does_not_retry_non_retryable_provider_error(monkeypatch):
+    fallback_attempts: list[int] = []
+
+    class PrimaryProvider:
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            raise AIProviderError("codex_timeout", "primary timed out")
+
+    class FallbackProvider:
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            fallback_attempts.append(len(fallback_attempts) + 1)
+            raise AIProviderError("missing_api_key", "fallback key missing")
+
+    def provider_factory(settings):
+        if settings.ai_provider_name == "codex":
+            return PrimaryProvider()
+        return FallbackProvider()
+
+    monkeypatch.setattr("app.services.create_ai_provider", provider_factory)
+
+    with pytest.raises(AIProviderError) as exc:
+        DialogueService._generate_with_fallback(
+            settings=Settings(
+                AI_PROVIDER_NAME="codex",
+                AI_MODEL_NAME="gpt-5.5",
+                AI_RESPONSE_SLA_SECONDS=30,
+                AI_FALLBACK_ENABLED=True,
+                AI_FALLBACK_PROVIDER_NAME="deepseek",
+                AI_FALLBACK_API_KEY="test-key",
+                AI_FALLBACK_MAX_ATTEMPTS=3,
+            ),
+            system_prompt="",
+            history=[{"role": "user", "content": "hello"}],
+            provider_thread_id=None,
+        )
+
+    assert exc.value.code == "ai_fallback_failed"
+    assert "fallback missing_api_key" in exc.value.message
+    assert "attempts=1" in exc.value.message
+    assert "retryable=False" in exc.value.message
+    assert fallback_attempts == [1]
+
+
+def test_fallback_retry_exhaustion_reports_sanitized_failure(monkeypatch):
+    fallback_attempts: list[int] = []
+
+    class PrimaryProvider:
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            raise AIProviderError("codex_timeout", "primary timed out")
+
+    class FallbackProvider:
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            fallback_attempts.append(len(fallback_attempts) + 1)
+            raise AIProviderError("provider_timeout", "temporary fallback timeout")
+
+    def provider_factory(settings):
+        if settings.ai_provider_name == "codex":
+            return PrimaryProvider()
+        return FallbackProvider()
+
+    monkeypatch.setattr("app.services.create_ai_provider", provider_factory)
+
+    with pytest.raises(AIProviderError) as exc:
+        DialogueService._generate_with_fallback(
+            settings=Settings(
+                AI_PROVIDER_NAME="codex",
+                AI_MODEL_NAME="gpt-5.5",
+                AI_RESPONSE_SLA_SECONDS=30,
+                AI_FALLBACK_ENABLED=True,
+                AI_FALLBACK_PROVIDER_NAME="deepseek",
+                AI_FALLBACK_MODEL_NAME="deepseek-v4-flash",
+                AI_FALLBACK_API_KEY="test-key",
+                AI_FALLBACK_MAX_ATTEMPTS=2,
+            ),
+            system_prompt="",
+            history=[{"role": "user", "content": "hello"}],
+            provider_thread_id=None,
+        )
+
+    assert exc.value.code == "ai_fallback_failed"
+    assert "primary codex_timeout" in exc.value.message
+    assert "fallback provider_timeout" in exc.value.message
+    assert "attempts=2" in exc.value.message
+    assert fallback_attempts == [1, 2]
 
 def test_dialogue_unexpected_provider_error_completes_pending_turn(client, admin_headers, db_session, monkeypatch):
     class BrokenProvider:

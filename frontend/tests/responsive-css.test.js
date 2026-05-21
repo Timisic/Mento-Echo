@@ -57,6 +57,22 @@ describe('chat responsive CSS contract', () => {
     expect(css).not.toContain('order: -1');
   });
 
+  it('keeps questionnaire scale endpoint labels on the left and right in narrow layouts', () => {
+    expectSelectorDeclaration(
+      tabletCss,
+      '.scale-row,\n  .semantic .scale-row',
+      'grid-template-columns: minmax(4.2rem, 0.7fr) minmax(0, 1fr) minmax(4.2rem, 0.7fr)'
+    );
+    expectSelectorDeclaration(tabletCss, '.scale-anchor:last-child', 'text-align: end');
+    expectSelectorDeclaration(tabletCss, '.scale-options', 'min-inline-size: 0');
+    expectSelectorDeclaration(tabletCss, '.scale-options', 'overflow-x: auto');
+    expect(
+      selectorBlocks(tabletCss, '.scale-row,\n  .semantic .scale-row').some((block) =>
+        block.includes('grid-template-columns: 1fr')
+      )
+    ).toBe(false);
+  });
+
   it('lets the mobile dialogue page scroll while preserving a large chat viewport', () => {
     expectSelectorDeclaration(tabletCss, '.app-shell:has(.dialogue-flow)', 'block-size: auto');
     expectSelectorDeclaration(tabletCss, '.dialogue-flow,\n  .dialogue-layout,\n  .dialogue-shell', 'overflow: visible');

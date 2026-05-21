@@ -890,14 +890,20 @@ td {
 
   .scale-row,
   .semantic .scale-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(4.2rem, 0.7fr) minmax(0, 1fr) minmax(4.2rem, 0.7fr);
+    column-gap: var(--space-sm);
+  }
+
+  .scale-anchor {
+    font-size: 0.86rem;
   }
 
   .scale-anchor:last-child {
-    text-align: start;
+    text-align: end;
   }
 
   .scale-options {
+    min-inline-size: 0;
     justify-content: flex-start;
     overflow-x: auto;
     padding-block: var(--space-xs);

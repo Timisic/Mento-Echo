@@ -240,10 +240,11 @@ CODEX_TURN_TIMEOUT_SECONDS=25
 AI_FALLBACK_ENABLED=true
 AI_FALLBACK_PROVIDER_NAME=deepseek
 AI_FALLBACK_BASE_URL=https://api.deepseek.com
-AI_FALLBACK_MODEL_NAME=deepseek-chat
+AI_FALLBACK_MODEL_NAME=deepseek-v4-flash
 AI_FALLBACK_API_KEY=
 AI_FALLBACK_MAX_TOKENS=800
 AI_FALLBACK_TIMEOUT_SECONDS=30
+AI_FALLBACK_MAX_ATTEMPTS=2
 ```
 
 真实模型调用可能产生外部 API 或 Codex 账号费用。API Key 只应保存在本地 `.env` 或部署环境变量中。当前 AI 对话决策是 promptless：后端不应向模型发送系统提示词、developer/base instruction 或话题引导。Codex 模式会把每个 Experiment Session 的 Codex thread id 存入数据库，以便浏览器刷新或后端重启后继续同一段对话。

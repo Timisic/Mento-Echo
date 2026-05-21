@@ -578,6 +578,7 @@ function QuestionnairePage({
   onSubmit: (responses: Record<string, string | number>) => void;
 }) {
   const groups = useMemo(() => buildQuestionnaireGroups(definition), [definition]);
+  const questionnaireTopRef = useRef<HTMLElement | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
   const [localError, setLocalError] = useState('');
   const currentGroup = groups[Math.min(pageIndex, groups.length - 1)];
@@ -592,6 +593,16 @@ function QuestionnairePage({
     setLocalError('');
   }, [definition.phase]);
 
+  function scrollQuestionnaireToTop() {
+    questionnaireTopRef.current?.scrollIntoView({ block: 'start', inline: 'nearest' });
+  }
+
+  function goToPage(nextIndex: number) {
+    const boundedIndex = Math.max(0, Math.min(nextIndex, groups.length - 1));
+    if (boundedIndex !== pageIndex) scrollQuestionnaireToTop();
+    setPageIndex(boundedIndex);
+  }
+
   function goNext() {
     const missingInGroup = currentGroup.items.filter((item) => item.required && !hasResponse(responses[item.item_key]));
     if (missingInGroup.length > 0) {
@@ -599,7 +610,7 @@ function QuestionnairePage({
       return;
     }
     setLocalError('');
-    setPageIndex((index) => Math.min(index + 1, groups.length - 1));
+    goToPage(pageIndex + 1);
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -612,7 +623,7 @@ function QuestionnairePage({
   }
 
   return (
-    <section className="questionnaire" aria-labelledby="questionnaire-heading">
+    <section ref={questionnaireTopRef} className="questionnaire" aria-labelledby="questionnaire-heading">
       <div className="section-heading">
         <div>
           <p className="eyebrow">{phaseLabel} 第 {pageIndex + 1} / {groups.length} 部分</p>
@@ -638,7 +649,7 @@ function QuestionnairePage({
               const targetIndex = groups.findIndex((group) =>
                 group.items.some((candidate) => candidate.item_key === item.item_key)
               );
-              if (targetIndex >= 0) setPageIndex(targetIndex);
+              if (targetIndex >= 0) goToPage(targetIndex);
             }}
           />
         ) : (
@@ -662,7 +673,7 @@ function QuestionnairePage({
             disabled={pageIndex === 0 || busy}
             onClick={() => {
               setLocalError('');
-              setPageIndex((index) => Math.max(index - 1, 0));
+              goToPage(pageIndex - 1);
             }}
           >
             上一页

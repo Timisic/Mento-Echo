@@ -1201,7 +1201,10 @@ class DialogueService:
             )
         except AIProviderError as primary_error:
             elapsed = time.perf_counter() - started
-            remaining_timeout = max(1.0, settings.ai_response_sla_seconds - elapsed)
+            remaining_timeout = settings.ai_response_sla_seconds - elapsed
+            if remaining_timeout <= 0:
+                raise
+            fallback_deadline = started + settings.ai_response_sla_seconds
             fallback_settings = DialogueService._fallback_settings(
                 settings,
                 timeout_seconds=min(settings.ai_fallback_timeout_seconds, remaining_timeout),
@@ -1210,10 +1213,13 @@ class DialogueService:
                 raise
             try:
                 return (
-                    create_ai_provider(fallback_settings).generate(
+                    DialogueService._generate_with_retry(
+                        settings=fallback_settings,
                         system_prompt=system_prompt,
-                        messages=history,
+                        history=history,
                         provider_thread_id=None,
+                        max_attempts=settings.ai_fallback_max_attempts,
+                        deadline=fallback_deadline,
                     ),
                     primary_error,
                 )
@@ -1225,6 +1231,73 @@ class DialogueService:
                         f"fallback {fallback_error.code}: {fallback_error.message}"
                     ),
                 ) from fallback_error
+
+    @staticmethod
+    def _generate_with_retry(
+        *,
+        settings: Settings,
+        system_prompt: str,
+        history: list[dict[str, str]],
+        provider_thread_id: str | None,
+        max_attempts: int,
+        deadline: float | None = None,
+    ) -> AIProviderResult:
+        attempts = max(1, max_attempts)
+        retry_errors: list[dict[str, object]] = []
+        for attempt in range(1, attempts + 1):
+            attempt_settings = settings
+            if deadline is not None:
+                remaining_timeout = deadline - time.perf_counter()
+                if remaining_timeout <= 0:
+                    raise AIProviderError("provider_timeout", "Fallback retry budget exhausted")
+                attempt_settings = settings.model_copy(
+                    update={"ai_timeout_seconds": min(settings.ai_timeout_seconds, remaining_timeout)}
+                )
+            try:
+                result = create_ai_provider(attempt_settings).generate(
+                    system_prompt=system_prompt,
+                    messages=history,
+                    provider_thread_id=provider_thread_id,
+                )
+            except AIProviderError as exc:
+                retry_errors.append(
+                    {
+                        "attempt": attempt,
+                        "code": exc.code,
+                        "message_sanitized": exc.message,
+                    }
+                )
+                retryable = DialogueService._is_retryable_provider_error(exc)
+                if attempt >= attempts or not retryable:
+                    raise AIProviderError(
+                        exc.code,
+                        f"{exc.message}; attempts={attempt}; retryable={retryable}",
+                    ) from exc
+                continue
+            if retry_errors:
+                return AIProviderResult(
+                    content=result.content,
+                    provider_name=result.provider_name,
+                    model_name=result.model_name,
+                    generation_params={
+                        **dict(result.generation_params),
+                        "retry_errors": retry_errors,
+                    },
+                    request_started_at=result.request_started_at,
+                    response_completed_at=result.response_completed_at,
+                    duration_ms=result.duration_ms,
+                    retry_count=result.retry_count + len(retry_errors),
+                    error_code=result.error_code,
+                    error_message_sanitized=result.error_message_sanitized,
+                    provider_thread_id=result.provider_thread_id,
+                    provider_turn_id=result.provider_turn_id,
+                )
+            return result
+        raise AIProviderError("provider_error", "Provider retry loop exhausted without a result")
+
+    @staticmethod
+    def _is_retryable_provider_error(error: AIProviderError) -> bool:
+        return error.code in {"provider_timeout", "provider_error", "codex_timeout"}
 
     @staticmethod
     def _fallback_settings(settings: Settings, *, timeout_seconds: float | None = None) -> Settings | None:
@@ -1245,6 +1318,7 @@ class DialogueService:
             AI_MAX_TOKENS=settings.ai_fallback_max_tokens,
             AI_TIMEOUT_SECONDS=timeout_seconds or settings.ai_fallback_timeout_seconds,
             AI_RESPONSE_SLA_SECONDS=settings.ai_response_sla_seconds,
+            AI_FALLBACK_MAX_ATTEMPTS=settings.ai_fallback_max_attempts,
             CODEX_COMMAND=settings.codex_command,
             CODEX_APPROVAL_POLICY=settings.codex_approval_policy,
             CODEX_SANDBOX=settings.codex_sandbox,
