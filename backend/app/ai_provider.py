@@ -91,6 +91,10 @@ class OpenAICompatibleProvider:
             "messages": payload_messages,
             **params,
         }
+        provider_name = self.settings.ai_provider_name.strip().lower()
+        model_name = self.settings.ai_model_name.strip().lower()
+        if provider_name == "deepseek" and model_name.startswith("deepseek-v4"):
+            payload["thinking"] = {"type": "disabled"}
         request = urllib.request.Request(
             self.settings.ai_base_url.rstrip("/") + "/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
@@ -103,17 +107,26 @@ class OpenAICompatibleProvider:
         try:
             with urllib.request.urlopen(request, timeout=self.settings.ai_timeout_seconds) as response:
                 data = json.loads(response.read().decode("utf-8"))
-            content = data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            content = choice["message"]["content"]
+            finish_reason = choice.get("finish_reason")
         except TimeoutError as exc:
             raise AIProviderError("provider_timeout", sanitize_error_message(str(exc))) from exc
         except (urllib.error.URLError, OSError, KeyError, IndexError, json.JSONDecodeError) as exc:
             raise AIProviderError("provider_error", sanitize_error_message(str(exc))) from exc
+        if not str(content or "").strip():
+            raise AIProviderError("provider_error", sanitize_error_message(f"AI provider returned empty content; finish_reason={finish_reason}"))
         completed = datetime.now(UTC)
+        generation_params = dict(params)
+        if "thinking" in payload:
+            generation_params["thinking"] = payload["thinking"]
+        if finish_reason:
+            generation_params["finish_reason"] = finish_reason
         return AIProviderResult(
             content=content,
             provider_name=self.settings.ai_provider_name,
             model_name=self.settings.ai_model_name,
-            generation_params=params,
+            generation_params=generation_params,
             request_started_at=started,
             response_completed_at=completed,
             duration_ms=int((time.perf_counter() - monotonic_started) * 1000),

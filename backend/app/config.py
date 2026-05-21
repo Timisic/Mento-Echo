@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     ai_fallback_provider_name: str = Field(default="deepseek", alias="AI_FALLBACK_PROVIDER_NAME")
     ai_fallback_base_url: str = Field(default="https://api.deepseek.com", alias="AI_FALLBACK_BASE_URL")
     ai_fallback_api_key: str | None = Field(default=None, alias="AI_FALLBACK_API_KEY")
-    ai_fallback_model_name: str = Field(default="deepseek-v4-flash", alias="AI_FALLBACK_MODEL_NAME")
+    ai_fallback_model_name: str = Field(default="deepseek-v4-pro", alias="AI_FALLBACK_MODEL_NAME")
     ai_fallback_temperature: float = Field(default=0.3, alias="AI_FALLBACK_TEMPERATURE")
     ai_fallback_max_tokens: int = Field(default=800, alias="AI_FALLBACK_MAX_TOKENS")
     ai_fallback_timeout_seconds: float = Field(default=30.0, alias="AI_FALLBACK_TIMEOUT_SECONDS")

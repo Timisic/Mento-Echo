@@ -94,6 +94,75 @@ def test_openai_compatible_payload_omits_system_message_when_promptless(monkeypa
     }
 
 
+def test_deepseek_v4_payload_disables_thinking_for_sla_fallback(monkeypatch):
+    import json
+    import urllib.request
+
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"choices":[{"finish_reason":"stop","message":{"content":"ok","reasoning_content":null}}]}'
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    provider = OpenAICompatibleProvider(
+        Settings(
+            AI_PROVIDER_NAME="deepseek",
+            AI_BASE_URL="https://api.deepseek.com",
+            AI_MODEL_NAME="deepseek-v4-pro",
+            AI_API_KEY="test-key",
+        )
+    )
+
+    result = provider.generate(system_prompt="", messages=[{"role": "user", "content": "hello"}])
+
+    assert result.content == "ok"
+    assert captured["payload"]["thinking"] == {"type": "disabled"}
+    assert result.generation_params["thinking"] == {"type": "disabled"}
+    assert result.generation_params["finish_reason"] == "stop"
+
+
+def test_openai_compatible_empty_content_is_provider_error(monkeypatch):
+    import urllib.request
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"choices":[{"finish_reason":"length","message":{"content":"","reasoning_content":"thinking"}}]}'
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout: FakeResponse())
+    provider = OpenAICompatibleProvider(
+        Settings(
+            AI_PROVIDER_NAME="deepseek",
+            AI_BASE_URL="https://api.deepseek.com",
+            AI_MODEL_NAME="deepseek-v4-pro",
+            AI_API_KEY="test-key",
+        )
+    )
+
+    with pytest.raises(AIProviderError) as exc:
+        provider.generate(system_prompt="", messages=[{"role": "user", "content": "hello"}])
+
+    assert exc.value.code == "provider_error"
+    assert "empty content" in exc.value.message
+    assert "finish_reason=length" in exc.value.message
+
+
 def test_openai_compatible_read_timeout_is_ai_provider_error(monkeypatch):
     import urllib.request
 
@@ -253,7 +322,7 @@ def test_dialogue_falls_back_without_exposing_provider_to_participant(client, ad
             AI_MODEL_NAME="gpt-5.5",
             AI_FALLBACK_ENABLED=True,
             AI_FALLBACK_PROVIDER_NAME="deepseek",
-            AI_FALLBACK_MODEL_NAME="deepseek-v4-flash",
+            AI_FALLBACK_MODEL_NAME="deepseek-v4-pro",
             AI_FALLBACK_API_KEY="test-key",
         ),
     )
@@ -272,7 +341,7 @@ def test_dialogue_falls_back_without_exposing_provider_to_participant(client, ad
     messages = db_session.query(ChatMessage).filter_by(experiment_session_id=session_id).order_by(ChatMessage.message_index).all()
     assert messages[1].content == "fallback response"
     assert messages[1].provider_name == "deepseek"
-    assert messages[1].model_name == "deepseek-v4-flash"
+    assert messages[1].model_name == "deepseek-v4-pro"
     assert messages[1].system_prompt_version is None
     assert messages[1].generation_params["prompt_mode"] == PROMPTLESS_DIALOGUE_MODE
     assert messages[1].generation_params["fallback_triggered"] is True
@@ -299,7 +368,7 @@ def test_fallback_timeout_uses_remaining_sla_budget(monkeypatch):
             return AIProviderResult(
                 content="fallback response",
                 provider_name="deepseek",
-                model_name="deepseek-v4-flash",
+                model_name="deepseek-v4-pro",
                 generation_params={},
                 request_started_at=timestamp,
                 response_completed_at=timestamp,
@@ -336,8 +405,8 @@ def test_fallback_timeout_uses_remaining_sla_budget(monkeypatch):
 
 
 
-def test_default_fallback_model_uses_current_deepseek_v4_flash():
-    assert Settings.model_fields["ai_fallback_model_name"].default == "deepseek-v4-flash"
+def test_default_fallback_model_uses_current_deepseek_v4_pro():
+    assert Settings.model_fields["ai_fallback_model_name"].default == "deepseek-v4-pro"
 
 
 def test_fallback_retries_transient_provider_error_before_success(monkeypatch):
@@ -358,7 +427,7 @@ def test_fallback_retries_transient_provider_error_before_success(monkeypatch):
             return AIProviderResult(
                 content="fallback response after retry",
                 provider_name="deepseek",
-                model_name="deepseek-v4-flash",
+                model_name="deepseek-v4-pro",
                 generation_params={"temperature": 0.3},
                 request_started_at=timestamp,
                 response_completed_at=timestamp,
@@ -379,7 +448,7 @@ def test_fallback_retries_transient_provider_error_before_success(monkeypatch):
             AI_RESPONSE_SLA_SECONDS=30,
             AI_FALLBACK_ENABLED=True,
             AI_FALLBACK_PROVIDER_NAME="deepseek",
-            AI_FALLBACK_MODEL_NAME="deepseek-v4-flash",
+            AI_FALLBACK_MODEL_NAME="deepseek-v4-pro",
             AI_FALLBACK_API_KEY="test-key",
             AI_FALLBACK_MAX_ATTEMPTS=2,
         ),
@@ -420,7 +489,7 @@ def test_fallback_retry_recomputes_timeout_against_cumulative_sla(monkeypatch):
             return AIProviderResult(
                 content="fallback response",
                 provider_name="deepseek",
-                model_name="deepseek-v4-flash",
+                model_name="deepseek-v4-pro",
                 generation_params={},
                 request_started_at=timestamp,
                 response_completed_at=timestamp,
@@ -570,7 +639,7 @@ def test_fallback_retry_exhaustion_reports_sanitized_failure(monkeypatch):
                 AI_RESPONSE_SLA_SECONDS=30,
                 AI_FALLBACK_ENABLED=True,
                 AI_FALLBACK_PROVIDER_NAME="deepseek",
-                AI_FALLBACK_MODEL_NAME="deepseek-v4-flash",
+                AI_FALLBACK_MODEL_NAME="deepseek-v4-pro",
                 AI_FALLBACK_API_KEY="test-key",
                 AI_FALLBACK_MAX_ATTEMPTS=2,
             ),
