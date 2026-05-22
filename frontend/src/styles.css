@@ -36,6 +36,7 @@
 html,
 body,
 #root {
+  width: 100%;
   inline-size: 100%;
   min-inline-size: 0;
   overflow-x: clip;
@@ -133,6 +134,7 @@ li {
 }
 
 .app-shell {
+  width: min(1180px, calc(100% - 32px));
   inline-size: min(1180px, calc(100% - 32px));
   max-inline-size: 100%;
   min-inline-size: 0;
@@ -452,10 +454,12 @@ li {
 }
 
 .scale-options {
-  display: flex;
-  flex-wrap: nowrap;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 34px;
   gap: var(--space-sm);
   justify-content: center;
+  min-inline-size: max-content;
 }
 
 .scale-choice {
@@ -890,12 +894,13 @@ td {
 
   .scale-row,
   .semantic .scale-row {
-    grid-template-columns: minmax(4.2rem, 0.7fr) minmax(0, 1fr) minmax(4.2rem, 0.7fr);
+    grid-template-columns: minmax(3.25rem, 0.48fr) minmax(0, 1.25fr) minmax(3.25rem, 0.48fr);
     column-gap: var(--space-sm);
   }
 
   .scale-anchor {
-    font-size: 0.86rem;
+    font-size: 0.82rem;
+    line-height: 1.25;
   }
 
   .scale-anchor:last-child {
@@ -904,9 +909,26 @@ td {
 
   .scale-options {
     min-inline-size: 0;
-    justify-content: flex-start;
-    overflow-x: auto;
+    grid-auto-columns: minmax(24px, 1fr);
+    gap: 0.2rem;
+    justify-content: stretch;
+    overflow-x: visible;
     padding-block: var(--space-xs);
+  }
+
+  .scale-choice {
+    min-inline-size: 0;
+    font-size: 0.76rem;
+  }
+
+  .scale-choice span {
+    inline-size: 28px;
+    block-size: 28px;
+  }
+
+  .scale-choice span::after {
+    inline-size: 11px;
+    block-size: 11px;
   }
 
   .app-shell:has(.dialogue-flow) {
@@ -954,8 +976,15 @@ td {
 }
 
 @media (max-width: 640px) {
+  html,
+  body,
+  #root {
+    max-inline-size: 100%;
+  }
+
   .app-shell {
-    inline-size: min(100% - 20px, 1180px);
+    width: calc(100% - 12px);
+    inline-size: calc(100% - 12px);
     padding-block-start: var(--space-md);
   }
 
@@ -978,7 +1007,62 @@ td {
   .management-section,
   .entry-form,
   .role-actions {
-    padding: var(--space-lg);
+    width: 100%;
+    inline-size: 100%;
+    max-inline-size: 100%;
+    padding: var(--space-md);
+  }
+
+  .questionnaire {
+    padding-inline: var(--space-sm);
+  }
+
+  .question-list {
+    gap: var(--space-md);
+  }
+
+  .question-block {
+    width: 100%;
+    inline-size: 100%;
+    max-inline-size: 100%;
+    padding: var(--space-md) var(--space-xs);
+  }
+
+  .question-block legend {
+    max-inline-size: 100%;
+    padding-inline: 0;
+  }
+
+  .scale-row,
+  .semantic .scale-row {
+    grid-template-columns: minmax(2.85rem, 0.46fr) minmax(0, 1.3fr) minmax(2.85rem, 0.46fr);
+    column-gap: var(--space-xs);
+  }
+
+  .scale-anchor {
+    font-size: 0.76rem;
+    letter-spacing: -0.01em;
+  }
+
+  .scale-options {
+    grid-auto-columns: minmax(20px, 1fr);
+    gap: 0.05rem;
+  }
+
+  .scale-choice {
+    gap: 0.15rem;
+    font-size: 0.68rem;
+  }
+
+  .scale-choice span {
+    inline-size: 20px;
+    block-size: 20px;
+    border-width: 1.5px;
+  }
+
+  .scale-choice span::after {
+    inline-size: 8px;
+    block-size: 8px;
   }
 
   .summary-grid {

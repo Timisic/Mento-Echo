@@ -61,16 +61,40 @@ describe('chat responsive CSS contract', () => {
     expectSelectorDeclaration(
       tabletCss,
       '.scale-row,\n  .semantic .scale-row',
-      'grid-template-columns: minmax(4.2rem, 0.7fr) minmax(0, 1fr) minmax(4.2rem, 0.7fr)'
+      'grid-template-columns: minmax(3.25rem, 0.48fr) minmax(0, 1.25fr) minmax(3.25rem, 0.48fr)'
     );
     expectSelectorDeclaration(tabletCss, '.scale-anchor:last-child', 'text-align: end');
     expectSelectorDeclaration(tabletCss, '.scale-options', 'min-inline-size: 0');
-    expectSelectorDeclaration(tabletCss, '.scale-options', 'overflow-x: auto');
+    expectSelectorDeclaration(tabletCss, '.scale-options', 'grid-auto-columns: minmax(24px, 1fr)');
+    expectSelectorDeclaration(tabletCss, '.scale-options', 'overflow-x: visible');
     expect(
       selectorBlocks(tabletCss, '.scale-row,\n  .semantic .scale-row').some((block) =>
         block.includes('grid-template-columns: 1fr')
       )
     ).toBe(false);
+  });
+
+  it('uses full-width questionnaire cards and visible scale choices on phones', () => {
+    expectSelectorDeclaration(phoneCss, '.app-shell', 'width: calc(100% - 12px)');
+    expectSelectorDeclaration(phoneCss, '.app-shell', 'inline-size: calc(100% - 12px)');
+    expectSelectorDeclaration(
+      phoneCss,
+      '.guide-panel,\n  .questionnaire,\n  .management-section,\n  .entry-form,\n  .role-actions',
+      'width: 100%'
+    );
+    expectSelectorDeclaration(phoneCss, '.questionnaire', 'padding-inline: var(--space-sm)');
+    expectSelectorDeclaration(phoneCss, '.question-block', 'max-inline-size: 100%');
+    expectSelectorDeclaration(
+      phoneCss,
+      '.scale-row,\n  .semantic .scale-row',
+      'grid-template-columns: minmax(2.85rem, 0.46fr) minmax(0, 1.3fr) minmax(2.85rem, 0.46fr)'
+    );
+    expectSelectorDeclaration(phoneCss, '.scale-options', 'grid-auto-columns: minmax(20px, 1fr)');
+    expectSelectorDeclaration(phoneCss, '.question-block', 'padding: var(--space-md) var(--space-xs)');
+    expectSelectorDeclaration(phoneCss, '.scale-options', 'gap: 0.05rem');
+    expectSelectorDeclaration(phoneCss, '.scale-choice span', 'inline-size: 20px');
+    expectSelectorDeclaration(phoneCss, '.scale-choice span', 'block-size: 20px');
+    expect(phoneCss).not.toContain('overflow-x: auto');
   });
 
   it('lets the mobile dialogue page scroll while preserving a large chat viewport', () => {
