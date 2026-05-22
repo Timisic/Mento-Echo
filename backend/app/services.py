@@ -264,6 +264,15 @@ class ParticipantRegistryService:
 
     @staticmethod
     def _next_self_code_number(db: Session, *, prefix: str) -> int:
+        max_number = ParticipantRegistryService._max_self_code_number_from_participants(db, prefix=prefix)
+        max_number = max(
+            max_number,
+            ParticipantRegistryService._max_self_code_number_from_cleanup_audits(db, prefix=prefix),
+        )
+        return max_number + 1
+
+    @staticmethod
+    def _max_self_code_number_from_participants(db: Session, *, prefix: str) -> int:
         pattern = re.compile(rf"^{re.escape(prefix)}(\d+)-[A-Z0-9]+$")
         max_number = 0
         codes = db.scalars(
@@ -273,7 +282,26 @@ class ParticipantRegistryService:
             match = pattern.match(code)
             if match:
                 max_number = max(max_number, int(match.group(1)))
-        return max_number + 1
+        return max_number
+
+    @staticmethod
+    def _max_self_code_number_from_cleanup_audits(db: Session, *, prefix: str) -> int:
+        max_number = 0
+        metadata_rows = db.scalars(
+            select(AuditLog.audit_metadata).where(AuditLog.action == "participant_cleanup_under_six_turns")
+        )
+        for metadata in metadata_rows:
+            if not isinstance(metadata, dict):
+                continue
+            by_prefix = metadata.get("self_registration_high_watermark_by_prefix")
+            if not isinstance(by_prefix, dict):
+                continue
+            value = by_prefix.get(prefix)
+            try:
+                max_number = max(max_number, int(value))
+            except (TypeError, ValueError):
+                continue
+        return max_number
 
 
 class ExperimentSessionService:

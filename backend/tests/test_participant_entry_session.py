@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.services import log_audit
 from tests.conftest import import_participants
 
 
@@ -21,6 +22,22 @@ def test_participant_self_registration_generates_sequential_code_with_suffix(cli
         first_body["participant_code"],
         second_body["participant_code"],
     ]
+
+
+def test_self_registration_continues_after_cleanup_high_watermark(client, db_session):
+    log_audit(
+        db_session,
+        admin_id="researcher",
+        action="participant_cleanup_under_six_turns",
+        target_type="participant_batch",
+        metadata={"self_registration_high_watermark_by_prefix": {"P": 18}},
+    )
+    db_session.commit()
+
+    response = client.post("/api/participant/self-register")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["participant_code"].startswith("P019-")
 
 
 def test_participant_code_entry_accepts_known_rejects_unknown_and_logs_events(client, admin_headers):

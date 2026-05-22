@@ -78,6 +78,7 @@ def test_openai_compatible_payload_omits_system_message_when_promptless(monkeypa
             AI_BASE_URL="https://api.deepseek.com/v1",
             AI_MODEL_NAME="deepseek-chat",
             AI_API_KEY="test-key",
+            AI_MAX_TOKENS=600,
             AI_TIMEOUT_SECONDS=10,
         )
     )
