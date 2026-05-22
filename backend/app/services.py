@@ -14,6 +14,7 @@ from app.ai_provider import (
     PROMPTLESS_DIALOGUE_MODE,
     AIProviderError,
     AIProviderResult,
+    PromptConfig,
     create_ai_provider,
     sanitize_error_message,
 )
@@ -40,6 +41,10 @@ from app.schemas import SessionResponse, StatusRow
 VALID_GROUPS = {"pilot", "experiment", "control"}
 GROUPED_STUDY_GROUPS = {"experiment", "control"}
 SELF_CODE_SUFFIX_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+DEEPSEEK_200_CHAR_DIALOGUE_MODE = "deepseek_200_char_limit_v1"
+DEEPSEEK_200_CHAR_SYSTEM_PROMPT = (
+    "请用简体中文回答，严格不超过200字。最多一段，不列长清单。保持中立、简洁，围绕用户的专业选择与未来方向。"
+)
 CANONICAL_STATUSES = {
     "not_started",
     "pre_survey_submitted",
@@ -905,10 +910,11 @@ class DialogueService:
             through_index=participant_message.message_index,
         )
         settings = get_settings()
+        prompt_config = DialogueService._dialogue_prompt_config(settings)
         try:
             result, primary_error = DialogueService._generate_with_fallback(
                 settings=settings,
-                system_prompt="",
+                system_prompt=prompt_config.system_prompt,
                 history=history,
                 provider_thread_id=session.dialogue_model_thread_id,
             )
@@ -916,7 +922,12 @@ class DialogueService:
                 session.dialogue_model_thread_id = result.provider_thread_id
             if result.provider_turn_id:
                 session.dialogue_model_turn_id = result.provider_turn_id
-            generation_params = {"prompt_mode": PROMPTLESS_DIALOGUE_MODE, **dict(result.generation_params)}
+            used_prompt_config = prompt_config
+            if primary_error is not None and result.provider_name != settings.ai_provider_name:
+                used_prompt_config = DialogueService._dialogue_prompt_config(
+                    settings.model_copy(update={"ai_provider_name": result.provider_name})
+                )
+            generation_params = {"prompt_mode": used_prompt_config.version, **dict(result.generation_params)}
             if primary_error is not None:
                 generation_params["fallback_triggered"] = True
                 generation_params["primary_error_code"] = primary_error.code
@@ -935,7 +946,7 @@ class DialogueService:
                 content=result.content,
                 provider_name=result.provider_name,
                 model_name=result.model_name,
-                system_prompt_version=None,
+                system_prompt_version=used_prompt_config.version if used_prompt_config.system_prompt else None,
                 generation_params=generation_params,
                 request_started_at=result.request_started_at,
                 response_completed_at=result.response_completed_at,
@@ -954,7 +965,7 @@ class DialogueService:
                         "primary_model_name": settings.ai_model_name,
                         "fallback_provider_name": result.provider_name,
                         "fallback_model_name": result.model_name,
-                        "prompt_mode": PROMPTLESS_DIALOGUE_MODE,
+                        "prompt_mode": used_prompt_config.version,
                         "primary_error_code": primary_error.code,
                         "primary_error_message_sanitized": primary_error.message,
                     },
@@ -965,6 +976,7 @@ class DialogueService:
                 participant=participant,
                 assistant_index=assistant_index,
                 settings=settings,
+                prompt_config=prompt_config,
                 error_code=exc.code,
                 error_message=exc.message,
             )
@@ -975,6 +987,7 @@ class DialogueService:
                 participant=participant,
                 assistant_index=assistant_index,
                 settings=settings,
+                prompt_config=prompt_config,
                 error_code="ai_generation_failed",
                 error_message=sanitize_error_message(str(exc)),
             )
@@ -990,7 +1003,7 @@ class DialogueService:
                 "message_index": assistant_index,
                 "provider_name": assistant_message.provider_name,
                 "model_name": assistant_message.model_name,
-                "prompt_mode": PROMPTLESS_DIALOGUE_MODE,
+                "prompt_mode": assistant_message.generation_params.get("prompt_mode", prompt_config.version),
                 "error_code": assistant_message.error_code,
             },
         )
@@ -1007,6 +1020,7 @@ class DialogueService:
         participant: Participant,
         assistant_index: int,
         settings: Settings,
+        prompt_config: PromptConfig,
         error_code: str,
         error_message: str,
     ) -> ChatMessage:
@@ -1019,8 +1033,8 @@ class DialogueService:
             content="AI 回复暂时生成失败，请稍后重试或联系研究者。",
             provider_name=settings.ai_provider_name,
             model_name=settings.ai_model_name,
-            system_prompt_version=None,
-            generation_params={"prompt_mode": PROMPTLESS_DIALOGUE_MODE},
+            system_prompt_version=prompt_config.version if prompt_config.system_prompt else None,
+            generation_params={"prompt_mode": prompt_config.version},
             request_started_at=timestamp,
             response_completed_at=timestamp,
             duration_ms=0,
@@ -1046,12 +1060,18 @@ class DialogueService:
             metadata={
                 "provider_name": message.provider_name,
                 "model_name": message.model_name,
-                "prompt_mode": PROMPTLESS_DIALOGUE_MODE,
+                "prompt_mode": (message.generation_params or {}).get("prompt_mode", PROMPTLESS_DIALOGUE_MODE),
                 "retry_count": 0,
                 "error_code": message.error_code,
                 "error_message_sanitized": message.error_message_sanitized,
             },
         )
+
+    @staticmethod
+    def _dialogue_prompt_config(settings: Settings) -> PromptConfig:
+        if settings.ai_provider_name.strip().lower() == "deepseek":
+            return PromptConfig(DEEPSEEK_200_CHAR_DIALOGUE_MODE, DEEPSEEK_200_CHAR_SYSTEM_PROMPT)
+        return PromptConfig(PROMPTLESS_DIALOGUE_MODE, "")
 
     @staticmethod
     def update_progress(db: Session, *, session: ExperimentSession) -> dict[str, object]:
@@ -1240,10 +1260,11 @@ class DialogueService:
             if fallback_settings is None:
                 raise
             try:
+                fallback_prompt_config = DialogueService._dialogue_prompt_config(fallback_settings)
                 return (
                     DialogueService._generate_with_retry(
                         settings=fallback_settings,
-                        system_prompt=system_prompt,
+                        system_prompt=fallback_prompt_config.system_prompt,
                         history=history,
                         provider_thread_id=None,
                         max_attempts=settings.ai_fallback_max_attempts,
