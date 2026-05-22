@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     ai_fallback_api_key: str | None = Field(default=None, alias="AI_FALLBACK_API_KEY")
     ai_fallback_model_name: str = Field(default="deepseek-v4-pro", alias="AI_FALLBACK_MODEL_NAME")
     ai_fallback_temperature: float = Field(default=0.3, alias="AI_FALLBACK_TEMPERATURE")
-    ai_fallback_max_tokens: int = Field(default=800, alias="AI_FALLBACK_MAX_TOKENS")
+    ai_fallback_max_tokens: int = Field(default=500, alias="AI_FALLBACK_MAX_TOKENS")
     ai_fallback_timeout_seconds: float = Field(default=30.0, alias="AI_FALLBACK_TIMEOUT_SECONDS")
     ai_fallback_max_attempts: int = Field(default=2, alias="AI_FALLBACK_MAX_ATTEMPTS")
     study_mode: str = Field(default="pilot_single", alias="STUDY_MODE")
@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     codex_approval_policy: str = Field(default="never", alias="CODEX_APPROVAL_POLICY")
     codex_sandbox: str = Field(default="read-only", alias="CODEX_SANDBOX")
     codex_reasoning_effort: str = Field(default="low", alias="CODEX_REASONING_EFFORT")
-    codex_read_timeout_seconds: float = Field(default=2.0, alias="CODEX_READ_TIMEOUT_SECONDS")
+    codex_read_timeout_seconds: float = Field(default=5.0, alias="CODEX_READ_TIMEOUT_SECONDS")
     codex_turn_timeout_seconds: float = Field(default=25.0, alias="CODEX_TURN_TIMEOUT_SECONDS")
     codex_cwd: str | None = Field(default=None, alias="CODEX_CWD")
 

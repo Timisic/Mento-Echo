@@ -409,6 +409,11 @@ def test_default_fallback_model_uses_current_deepseek_v4_pro():
     assert Settings.model_fields["ai_fallback_model_name"].default == "deepseek-v4-pro"
 
 
+def test_default_fallback_limits_fit_deepseek_v4_pro_sla():
+    assert Settings.model_fields["ai_fallback_max_tokens"].default == 500
+    assert Settings.model_fields["codex_read_timeout_seconds"].default == 5.0
+
+
 def test_fallback_retries_transient_provider_error_before_success(monkeypatch):
     fallback_attempts: list[int] = []
 
