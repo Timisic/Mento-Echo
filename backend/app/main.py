@@ -789,6 +789,7 @@ def get_dialogue(session_id: str, db: Session = Depends(get_session)) -> Dialogu
         group=session.group,  # type: ignore[arg-type]
         system_prompt_version=None,
         status=session.status,
+        initial_message_suggestion=DialogueService.initial_message_suggestion(db, session=session),
         progress=_progress_response(progress),
         messages=[_chat_message_response(message) for message in messages],
     )

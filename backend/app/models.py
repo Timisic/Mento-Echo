@@ -145,6 +145,13 @@ class ChatMessage(Base):
     retry_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     error_message_sanitized: Mapped[str | None] = mapped_column(Text, nullable=True)
+    effective_turn_label: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    effective_turn_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    effective_turn_excluded_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    effective_turn_verifier_provider: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    effective_turn_verifier_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    effective_turn_verifier_prompt_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    effective_turn_verifier_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 

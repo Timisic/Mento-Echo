@@ -359,6 +359,13 @@ def _chat_message_rows(db: Session) -> list[dict[str, Any]]:
                 "model_name": message.model_name,
                 "prompt_mode": (message.generation_params or {}).get("prompt_mode", PROMPTLESS_DIALOGUE_MODE),
                 "generation_params": message.generation_params,
+                "effective_turn_label": message.effective_turn_label,
+                "effective_turn_source": message.effective_turn_source,
+                "effective_turn_excluded_reason": message.effective_turn_excluded_reason,
+                "effective_turn_verifier_provider": message.effective_turn_verifier_provider,
+                "effective_turn_verifier_model": message.effective_turn_verifier_model,
+                "effective_turn_verifier_prompt_version": message.effective_turn_verifier_prompt_version,
+                "effective_turn_verifier_response": message.effective_turn_verifier_response,
             }
         )
     return rows

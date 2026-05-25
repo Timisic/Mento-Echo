@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_18_major_umics_age"
+QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_25_major_grade_injection"
 
 Phase = Literal["pre", "post"]
 
@@ -11,7 +11,7 @@ Phase = Literal["pre", "post"]
 @dataclass(frozen=True)
 class ScaleProfile:
     key: str
-    value_type: Literal["integer", "categorical"]
+    value_type: Literal["integer", "categorical", "text"]
     min_value: int | None = None
     max_value: int | None = None
     labels: dict[str, str] | None = None
@@ -60,6 +60,7 @@ SCALE_PROFILES: dict[str, ScaleProfile] = {
         max_value=60,
         labels={"16": "16岁", "60": "60岁"},
     ),
+    "major_text": ScaleProfile(key="major_text", value_type="text"),
     "identity_distress_1_5": ScaleProfile(
         key="identity_distress_1_5",
         value_type="integer",
@@ -162,6 +163,7 @@ def build_items() -> tuple[QuestionnaireItem, ...]:
 
     add("pre", "pre_demo_gender", "您的性别", "single_choice", "gender_options", "demographics", "gender")
     add("pre", "pre_demo_grade", "您目前在读：", "single_choice", "grade_options", "demographics", "grade")
+    add("pre", "pre_demo_major", "您的专业", "text_input", "major_text", "demographics", "major")
     add("pre", "pre_demo_age", "您的年龄", "number_input", "age_years", "demographics", "age")
     for i, text in enumerate(identity_distress_texts, 1):
         add(

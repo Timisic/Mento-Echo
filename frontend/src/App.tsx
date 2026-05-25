@@ -189,6 +189,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
       if (nextStep === 'dialogue') {
         const state = await fetchDialogue(result.session.experiment_session_id);
         setDialogue(state);
+        applyInitialDialogueSuggestion(state);
         setAssistantThinking(hasPendingAssistantResponse(state));
         setSession({ ...result.session, status: state.status });
       } else {
@@ -232,6 +233,14 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
     };
     setSession(updated);
     return updated;
+  }
+
+  function applyInitialDialogueSuggestion(state: DialogueState) {
+    setDialogueInput((current) =>
+      state.messages.length === 0 && state.initial_message_suggestion && !current.trim()
+        ? state.initial_message_suggestion
+        : current
+    );
   }
 
   async function loadQuestionnaire(phase: Phase) {
@@ -283,6 +292,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
       const assignedSession = await ensureAssignment(session);
       const state = await fetchDialogue(assignedSession.experiment_session_id);
       setDialogue(state);
+      applyInitialDialogueSuggestion(state);
       setAssistantThinking(hasPendingAssistantResponse(state));
       setStep('dialogue');
       setSession({ ...assignedSession, status: state.status });
@@ -306,6 +316,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
       await sendDialogueMessage(session.experiment_session_id, content);
       const state = await fetchDialogue(session.experiment_session_id);
       setDialogue(state);
+      applyInitialDialogueSuggestion(state);
       setPendingUserMessage(null);
       setAssistantThinking(hasPendingAssistantResponse(state));
       setSession({ ...session, status: state.status });
@@ -332,6 +343,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
       } else {
         const state = await fetchDialogue(session.experiment_session_id);
         setDialogue(state);
+        applyInitialDialogueSuggestion(state);
         setAssistantThinking(hasPendingAssistantResponse(state));
         setStatusMessage('已记录你的选择，可以继续围绕相关点展开。');
       }
@@ -347,6 +359,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
     try {
       const state = await fetchDialogue(session.experiment_session_id);
       setDialogue(state);
+      applyInitialDialogueSuggestion(state);
       setAssistantThinking(hasPendingAssistantResponse(state));
       setSession((current) => (current ? { ...current, status: state.status } : current));
     } catch {
@@ -773,6 +786,10 @@ function QuestionnaireItemControl({
   locked: boolean;
   onChange: (value: string | number) => void;
 }) {
+  if (scale.value_type === 'text') {
+    return <TextInputControl item={item} value={value} locked={locked} onChange={onChange} />;
+  }
+
   if (scale.value_type === 'categorical') {
     return (
       <fieldset className="question-block">
@@ -804,6 +821,33 @@ function QuestionnaireItemControl({
   }
 
   return <LikertScale item={item} scale={scale} value={value} locked={locked} onChange={onChange} />;
+}
+
+function TextInputControl({
+  item,
+  value,
+  locked,
+  onChange
+}: {
+  item: QuestionnaireItem;
+  value: string | number | undefined;
+  locked: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <fieldset className="question-block">
+      <legend>{item.order}. {item.item_text}</legend>
+      <input
+        type="text"
+        name={item.item_key}
+        value={value ?? ''}
+        disabled={locked}
+        maxLength={128}
+        placeholder="请输入你的专业"
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </fieldset>
+  );
 }
 
 function NumberInputControl({

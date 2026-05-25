@@ -43,13 +43,40 @@ GROUPED_STUDY_GROUPS = {"experiment", "control"}
 SELF_CODE_SUFFIX_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 DEEPSEEK_200_CHAR_DIALOGUE_MODE = "deepseek_200_char_limit_v1"
 DEEPSEEK_200_CHAR_SYSTEM_PROMPT = (
-    "请用简体中文回答，严格不超过200字。最多一段，不列长清单。保持中立、简洁，围绕用户的专业选择与未来方向。"
+    "请用简体中文回答，严格不超过200字。最多一段，不列长清单。保持中立、简洁。"
 )
 OPENAI_500_CHAR_DIALOGUE_MODE = "openai_500_char_guidance_v1"
 OPENAI_500_CHAR_SYSTEM_PROMPT = (
     "请用简体中文回答。总体控制在约500个中文汉字左右；如果问题复杂，可以略多但要优先完整收束，"
-    "不要写到一半停下。避免过长清单，不需要覆盖所有角度；围绕用户的专业选择与未来方向，保持中立、具体、支持性。"
+    "不要写到一半停下。避免过长清单，不需要覆盖所有角度；保持中立、具体、支持性。"
 )
+EFFECTIVE_TURN_VERIFIER_PROMPT_VERSION = "effective_turn_verifier_v1"
+EFFECTIVE_TURN_VERIFIER_SYSTEM_PROMPT = """你是实验平台的“有效用户回合”判定器，只输出 0、1 或 9。
+
+判定规则：
+1. 主题相关：内容涉及以下任一主题：专业适配、升学/就业方向、兴趣、价值观、能力感受、现实约束、家庭/同伴/社会期待、是否转向其他路径、下一步探索行动。
+2. 有实质信息：不是简单确认，而是至少包含以下任一类内容：个人情况、真实困惑、判断理由、情绪体验、两难冲突、选择比较、补充背景、对 AI 回应的反思或追问。
+3. 由被试主动表达：不能只是复制 AI 的话，也不能只是机械回复。
+
+标签：
+1 = 符合有效用户回合
+0 = 不符合有效用户回合
+9 = 信息不足或边界不清，需要人工审核
+
+样例：
+“我现在是计算机专业，但感觉自己不太喜欢写代码，又担心转专业影响就业。” -> 1
+“我主要纠结的是考研继续本专业，还是以后去做产品/运营。” -> 1
+“我觉得父母希望我稳定，但我自己更想做和创意相关的工作。” -> 1
+“那我应该怎么判断自己适不适合继续读这个专业？” -> 1
+“嗯” -> 0
+“好的” -> 0
+“继续说” -> 0
+“谢谢” -> 0
+“你觉得呢？”且前文没有提供任何个人信息 -> 0
+聊天气、娱乐、无关生活琐事 -> 0
+只复制问卷题目或实验说明 -> 0
+
+请只输出单个数字：0、1 或 9。"""
 CANONICAL_STATUSES = {
     "not_started",
     "pre_survey_submitted",
@@ -712,6 +739,13 @@ class QuestionnaireService:
             if value < scale.min_value or value > scale.max_value:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{item.item_key} must be between {scale.min_value} and {scale.max_value}")
             return value, str(value)
+        if scale.value_type == "text":
+            text = str(raw).strip()
+            if not text:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{item.item_key} is required")
+            if len(text) > 128:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{item.item_key} must be at most 128 characters")
+            return None, text
         text = str(raw).strip()
         if text not in scale.options:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{item.item_key} must be one of {', '.join(scale.options)}")
@@ -795,14 +829,22 @@ class DialogueService:
     _NON_SUBSTANTIVE_TURNS = {
         "嗯",
         "嗯嗯",
+        "你好",
+        "您好",
+        "hello",
+        "hi",
         "好的",
         "好",
         "行",
         "可以",
         "继续",
+        "继续说",
         "继续吧",
         "你说吧",
         "说吧",
+        "你觉得呢",
+        "谢谢",
+        "谢谢你",
         "ok",
         "okay",
         "yes",
@@ -860,12 +902,24 @@ class DialogueService:
             db.commit()
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dialogue has reached the ending limit")
         next_index = DialogueService._next_index(db, session_id=session.id)
+        excluded_reason = None
+        label = None
+        source = None
+        if not messages and DialogueService._matches_initial_message_suggestion(
+            db, session=session, content=content
+        ):
+            excluded_reason = "initial_profile_injection"
+            label = 0
+            source = "system_exclusion"
         participant_message = ChatMessage(
             experiment_session_id=session.id,
             participant_code=participant.participant_code,
             message_index=next_index,
             role="participant",
             content=content.strip(),
+            effective_turn_label=label,
+            effective_turn_source=source,
+            effective_turn_excluded_reason=excluded_reason,
         )
         db.add(participant_message)
         log_behavior(
@@ -1082,6 +1136,137 @@ class DialogueService:
         return PromptConfig(PROMPTLESS_DIALOGUE_MODE, "")
 
     @staticmethod
+    def initial_message_suggestion(db: Session, *, session: ExperimentSession) -> str | None:
+        responses = {
+            row.item_key: row.response_text
+            for row in QuestionnaireService.active_responses(db, session_id=session.id, phase="pre")
+        }
+        grade = (responses.get("pre_demo_grade") or "").strip()
+        major = (responses.get("pre_demo_major") or "").strip()
+        if not grade or not major:
+            return None
+        return f"我是一名{grade}的学生，我的专业是{major}"
+
+    @staticmethod
+    def _matches_initial_message_suggestion(db: Session, *, session: ExperimentSession, content: str) -> bool:
+        suggestion = DialogueService.initial_message_suggestion(db, session=session)
+        if not suggestion:
+            return False
+        return DialogueService.normalize_turn_content(content) == DialogueService.normalize_turn_content(suggestion)
+
+    @staticmethod
+    def _effective_turn_label(db: Session, *, session: ExperimentSession, message: ChatMessage) -> int:
+        if message.role != "participant":
+            return 0
+        if message.effective_turn_label in {0, 1, 9}:
+            return int(message.effective_turn_label)
+        if message.effective_turn_excluded_reason:
+            message.effective_turn_label = 0
+            message.effective_turn_source = message.effective_turn_source or "system_exclusion"
+            return 0
+        label = DialogueService._verify_effective_turn(db, session=session, message=message)
+        message.effective_turn_label = label
+        return label
+
+    @staticmethod
+    def _verify_effective_turn(db: Session, *, session: ExperimentSession, message: ChatMessage) -> int:
+        if not DialogueService.is_effective_participant_turn(message.content):
+            message.effective_turn_label = 0
+            message.effective_turn_source = "local_prefilter"
+            message.effective_turn_verifier_prompt_version = EFFECTIVE_TURN_VERIFIER_PROMPT_VERSION
+            return 0
+        settings = get_settings()
+        verifier_settings = DialogueService._effective_turn_verifier_settings(settings)
+        if verifier_settings is None:
+            label = 1 if DialogueService.is_effective_participant_turn(message.content) else 0
+            message.effective_turn_source = "local_fallback_no_verifier"
+            message.effective_turn_verifier_prompt_version = EFFECTIVE_TURN_VERIFIER_PROMPT_VERSION
+            return label
+        previous_messages = list(
+            db.scalars(
+                select(ChatMessage)
+                .where(
+                    ChatMessage.experiment_session_id == session.id,
+                    ChatMessage.role == "participant",
+                    ChatMessage.message_index < message.message_index,
+                )
+                .order_by(ChatMessage.message_index.desc())
+                .limit(4)
+            )
+        )
+        previous_context = "\n".join(
+            f"- {row.content}" for row in reversed(previous_messages)
+        ) or "（无）"
+        user_prompt = (
+            "请判定【待判定用户输入】是否是有效用户回合。\n"
+            f"【前文用户输入】\n{previous_context}\n\n"
+            f"【待判定用户输入】\n{message.content}\n\n"
+            "只输出 0、1 或 9。"
+        )
+        try:
+            result = create_ai_provider(verifier_settings).generate(
+                system_prompt=EFFECTIVE_TURN_VERIFIER_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_prompt}],
+                provider_thread_id=None,
+            )
+        except AIProviderError as exc:
+            label = 1 if DialogueService.is_effective_participant_turn(message.content) else 0
+            message.effective_turn_source = "local_fallback_verifier_error"
+            message.effective_turn_excluded_reason = (
+                None if label == 1 else "verifier_error_local_non_substantive"
+            )
+            message.effective_turn_verifier_provider = verifier_settings.ai_provider_name
+            message.effective_turn_verifier_model = verifier_settings.ai_model_name
+            message.effective_turn_verifier_prompt_version = EFFECTIVE_TURN_VERIFIER_PROMPT_VERSION
+            message.effective_turn_verifier_response = sanitize_error_message(exc.message)
+            return label
+        except Exception as exc:
+            label = 1 if DialogueService.is_effective_participant_turn(message.content) else 0
+            message.effective_turn_source = "local_fallback_verifier_error"
+            message.effective_turn_excluded_reason = (
+                None if label == 1 else "verifier_error_local_non_substantive"
+            )
+            message.effective_turn_verifier_provider = verifier_settings.ai_provider_name
+            message.effective_turn_verifier_model = verifier_settings.ai_model_name
+            message.effective_turn_verifier_prompt_version = EFFECTIVE_TURN_VERIFIER_PROMPT_VERSION
+            message.effective_turn_verifier_response = sanitize_error_message(str(exc))
+            return label
+        label = DialogueService._parse_effective_turn_label(result.content)
+        message.effective_turn_source = "verifier"
+        message.effective_turn_verifier_provider = result.provider_name
+        message.effective_turn_verifier_model = result.model_name
+        message.effective_turn_verifier_prompt_version = EFFECTIVE_TURN_VERIFIER_PROMPT_VERSION
+        message.effective_turn_verifier_response = result.content[:500]
+        if label == 9:
+            message.effective_turn_excluded_reason = "manual_review_required"
+        elif label == 0:
+            message.effective_turn_excluded_reason = "verifier_not_effective"
+        return label
+
+    @staticmethod
+    def _parse_effective_turn_label(content: str) -> int:
+        stripped = str(content or "").strip()
+        if stripped in {"0", "1", "9"}:
+            return int(stripped)
+        match = re.search(r"(?<!\d)([019])(?!\d)", stripped)
+        if not match:
+            return 9
+        return int(match.group(1))
+
+    @staticmethod
+    def _effective_turn_verifier_settings(settings: Settings) -> Settings | None:
+        verifier_settings = DialogueService._fallback_settings(settings, timeout_seconds=8)
+        if verifier_settings is None:
+            return None
+        return verifier_settings.model_copy(
+            update={
+                "ai_max_tokens": min(16, verifier_settings.ai_max_tokens),
+                "ai_temperature": 0.0,
+                "ai_reasoning_effort": settings.ai_reasoning_effort,
+            }
+        )
+
+    @staticmethod
     def update_progress(db: Session, *, session: ExperimentSession) -> dict[str, object]:
         participant_messages = list(
             db.scalars(
@@ -1091,7 +1276,9 @@ class DialogueService:
             )
         )
         participant_turns = sum(
-            1 for message in participant_messages if DialogueService.is_effective_participant_turn(message.content)
+            1
+            for message in participant_messages
+            if DialogueService._effective_turn_label(db, session=session, message=message) == 1
         )
         elapsed = DialogueService._active_elapsed_seconds(session)
         session.participant_turn_count = int(participant_turns)

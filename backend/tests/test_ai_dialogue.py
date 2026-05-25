@@ -177,6 +177,168 @@ def test_dialogue_injects_openai_500_char_prompt_and_records_version(
     assert messages[1].generation_params["max_completion_tokens"] == 2000
 
 
+def test_dialogue_initial_suggestion_from_grade_major_is_not_effective_turn(
+    client, admin_headers, db_session
+):
+    session_id = prepared_session(client, admin_headers, code="DINTRO", group="experiment")
+
+    state = client.get(f"/api/participant/sessions/{session_id}/dialogue")
+
+    assert state.status_code == 200
+    suggestion = state.json()["initial_message_suggestion"]
+    assert suggestion == "我是一名大三的学生，我的专业是计算机科学与技术"
+
+    sent = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": suggestion},
+    )
+
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["progress"]["participant_turn_count"] == 0
+    db_session.expire_all()
+    message = (
+        db_session.query(ChatMessage)
+        .filter_by(experiment_session_id=session_id, role="participant")
+        .one()
+    )
+    assert message.effective_turn_label == 0
+    assert message.effective_turn_source == "system_exclusion"
+    assert message.effective_turn_excluded_reason == "initial_profile_injection"
+
+
+def test_effective_turn_verifier_uses_fallback_model_and_stores_labels(
+    client, admin_headers, db_session, monkeypatch
+):
+    calls: list[tuple[str, str, str]] = []
+
+    class FakeProvider:
+        def __init__(self, settings):
+            self.settings = settings
+
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            timestamp = now_utc()
+            calls.append((self.settings.ai_provider_name, self.settings.ai_model_name, system_prompt))
+            if "有效用户回合" in system_prompt:
+                latest = messages[-1]["content"]
+                label = "1" if "考研继续本专业" in latest else "0"
+                return AIProviderResult(
+                    content=label,
+                    provider_name=self.settings.ai_provider_name,
+                    model_name=self.settings.ai_model_name,
+                    generation_params={"verifier": True},
+                    request_started_at=timestamp,
+                    response_completed_at=timestamp,
+                    duration_ms=1,
+                )
+            return AIProviderResult(
+                content="收到，我会继续回应你的想法。",
+                provider_name=self.settings.ai_provider_name,
+                model_name=self.settings.ai_model_name,
+                generation_params={},
+                request_started_at=timestamp,
+                response_completed_at=timestamp,
+                duration_ms=1,
+            )
+
+    monkeypatch.setattr("app.services.create_ai_provider", lambda settings: FakeProvider(settings))
+    monkeypatch.setattr(
+        "app.services.get_settings",
+        lambda: Settings(
+            AI_PROVIDER_NAME="openai",
+            AI_MODEL_NAME="gpt-5.5",
+            AI_API_KEY="primary-key",
+            AI_FALLBACK_ENABLED=True,
+            AI_FALLBACK_PROVIDER_NAME="deepseek",
+            AI_FALLBACK_BASE_URL="https://api.deepseek.com",
+            AI_FALLBACK_API_KEY="fallback-key",
+            AI_FALLBACK_MODEL_NAME="deepseek-v4-pro",
+            AI_FALLBACK_MAX_TOKENS=500,
+        ),
+    )
+    session_id = prepared_session(client, admin_headers, code="DVERIFY", group="experiment")
+    assert client.get(f"/api/participant/sessions/{session_id}/dialogue").status_code == 200
+
+    greeting = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": "你好"},
+    )
+    assert greeting.status_code == 200, greeting.text
+    assert greeting.json()["progress"]["participant_turn_count"] == 0
+    substantive = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": "我主要纠结的是考研继续本专业，还是以后去做产品/运营。"},
+    )
+
+    assert substantive.status_code == 200, substantive.text
+    assert substantive.json()["progress"]["participant_turn_count"] == 1
+    db_session.expire_all()
+    messages = (
+        db_session.query(ChatMessage)
+        .filter_by(experiment_session_id=session_id, role="participant")
+        .order_by(ChatMessage.message_index)
+        .all()
+    )
+    assert messages[0].effective_turn_label == 0
+    assert messages[0].effective_turn_source == "local_prefilter"
+    assert messages[1].effective_turn_label == 1
+    assert messages[1].effective_turn_source == "verifier"
+    assert messages[1].effective_turn_verifier_provider == "deepseek"
+    assert messages[1].effective_turn_verifier_model == "deepseek-v4-pro"
+    verifier_calls = [call for call in calls if "有效用户回合" in call[2]]
+    assert verifier_calls and verifier_calls[0][:2] == ("deepseek", "deepseek-v4-pro")
+
+
+def test_effective_turn_verifier_manual_review_label_does_not_count(
+    client, admin_headers, db_session, monkeypatch
+):
+    class FakeProvider:
+        def __init__(self, settings):
+            self.settings = settings
+
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            timestamp = now_utc()
+            return AIProviderResult(
+                content="9" if "有效用户回合" in system_prompt else "收到。",
+                provider_name=self.settings.ai_provider_name,
+                model_name=self.settings.ai_model_name,
+                generation_params={},
+                request_started_at=timestamp,
+                response_completed_at=timestamp,
+                duration_ms=1,
+            )
+
+    monkeypatch.setattr("app.services.create_ai_provider", lambda settings: FakeProvider(settings))
+    monkeypatch.setattr(
+        "app.services.get_settings",
+        lambda: Settings(
+            AI_PROVIDER_NAME="openai",
+            AI_MODEL_NAME="gpt-5.5",
+            AI_API_KEY="primary-key",
+            AI_FALLBACK_ENABLED=True,
+            AI_FALLBACK_PROVIDER_NAME="deepseek",
+            AI_FALLBACK_API_KEY="fallback-key",
+            AI_FALLBACK_MODEL_NAME="deepseek-v4-pro",
+        ),
+    )
+    session_id = prepared_session(client, admin_headers, code="DMANUAL", group="experiment")
+
+    response = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": "我有点复杂，说不清楚自己到底想继续还是转方向。"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["progress"]["participant_turn_count"] == 0
+    db_session.expire_all()
+    message = (
+        db_session.query(ChatMessage)
+        .filter_by(experiment_session_id=session_id, role="participant")
+        .one()
+    )
+    assert message.effective_turn_label == 9
+    assert message.effective_turn_excluded_reason == "manual_review_required"
+
+
 def test_openai_compatible_payload_omits_system_message_when_promptless(monkeypatch):
     import json
     import urllib.request

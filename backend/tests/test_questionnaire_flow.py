@@ -12,6 +12,8 @@ def responses_for_phase(phase: str, *, numeric_value: int = 4, pass_attention: b
             responses[item.item_key] = "女"
         elif item.scale == "grade_options":
             responses[item.item_key] = "大三"
+        elif item.scale == "major_text":
+            responses[item.item_key] = "计算机科学与技术"
         elif item.scale == "age_years":
             responses[item.item_key] = 20
         elif item.attention_check and pass_attention:
@@ -38,11 +40,12 @@ def test_pre_questionnaire_renders_from_versioned_config_without_name_fields(cli
 
     assert response.status_code == 200
     body = response.json()
-    assert body["questionnaire_version"] == "mentor_echo_questionnaire_v2026_05_18_major_umics_age"
+    assert body["questionnaire_version"] == "mentor_echo_questionnaire_v2026_05_25_major_grade_injection"
     assert body["phase"] == "pre"
-    assert len(body["items"]) == 23
+    assert len(body["items"]) == 24
     assert all("姓名" not in item["item_text"] for item in body["items"])
     assert any(item["item_key"] == "pre_demo_age" and item["item_text"] == "您的年龄" for item in body["items"])
+    assert any(item["item_key"] == "pre_demo_major" and item["item_text"] == "您的专业" for item in body["items"])
     assert all("专业选择/职业方向/价值观/人生目标" not in item["item_text"] for item in body["items"])
     assert any(item["item_text"] == "我的专业选择让我对生活有确定感。" for item in body["items"])
     assert not any(item["instrument"] == "dids" for item in body["items"])
@@ -60,7 +63,7 @@ def test_pre_submission_locks_raw_responses_scores_and_assignment(client, admin_
     assert submit.status_code == 200, submit.text
     body = submit.json()
     assert body["locked"] is True
-    assert body["response_count"] == 23
+    assert body["response_count"] == 24
     assert body["session"]["status"] == "pre_survey_submitted"
     assert body["session"]["group"] == "pilot"
     assert body["session"]["assignment_source"] == "pilot_single"
@@ -71,9 +74,12 @@ def test_pre_submission_locks_raw_responses_scores_and_assignment(client, admin_
     assert duplicate.status_code == 409
 
     rows = db_session.query(QuestionnaireResponse).filter_by(experiment_session_id=session_id, phase="pre").all()
-    assert len(rows) == 23
+    assert len(rows) == 24
+    major = next(row for row in rows if row.item_key == "pre_demo_major")
+    assert major.response_text == "计算机科学与技术"
+    assert major.response_value is None
     sample = next(row for row in rows if row.item_key == "pre_identity_distress_01")
-    assert sample.questionnaire_version == "mentor_echo_questionnaire_v2026_05_18_major_umics_age"
+    assert sample.questionnaire_version == "mentor_echo_questionnaire_v2026_05_25_major_grade_injection"
     assert sample.instrument == "identity_distress"
     assert sample.dimension == "total"
     assert sample.response_value == 5
@@ -128,7 +134,7 @@ def test_admin_reset_reopens_questionnaire_with_audited_reason(client, admin_hea
     active_rows = db_session.query(QuestionnaireResponse).filter_by(
         experiment_session_id=session_id, phase="pre", superseded_at=None
     ).all()
-    assert len(active_rows) == 23
+    assert len(active_rows) == 24
 
 
 def test_post_questionnaire_is_available_only_after_dialogue_completion(client, admin_headers):

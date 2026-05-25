@@ -279,6 +279,7 @@ class DialogueStateResponse(BaseModel):
     group: ExperimentGroup
     system_prompt_version: str | None
     status: SessionStatus
+    initial_message_suggestion: str | None
     progress: DialogueProgressResponse
     messages: list[ChatMessageResponse]
 

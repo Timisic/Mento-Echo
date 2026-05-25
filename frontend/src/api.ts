@@ -63,7 +63,7 @@ export type QuestionnaireItem = {
 
 export type ScaleProfile = {
   key: string;
-  value_type: 'integer' | 'categorical';
+  value_type: 'integer' | 'categorical' | 'text';
   min_value: number | null;
   max_value: number | null;
   labels: Record<string, string> | null;
@@ -84,6 +84,7 @@ export type DialogueState = {
   group: 'pilot' | 'experiment' | 'control';
   system_prompt_version: string | null;
   status: string;
+  initial_message_suggestion: string | null;
   progress: {
     participant_turn_count: number;
     dialogue_elapsed_seconds: number;

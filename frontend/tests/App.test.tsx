@@ -19,7 +19,7 @@ const session = {
 };
 
 const preQuestionnaire = {
-  questionnaire_version: 'mentor_echo_questionnaire_v2026_05_18_major_umics_age',
+  questionnaire_version: 'mentor_echo_questionnaire_v2026_05_25_major_grade_injection',
   phase: 'pre',
   locked: false,
   items: [
@@ -39,6 +39,32 @@ const preQuestionnaire = {
     {
       phase: 'pre',
       order: 2,
+      item_key: 'pre_demo_grade',
+      item_text: '您目前在读：',
+      item_type: 'single_choice',
+      scale: 'grade_options',
+      instrument: 'demographics',
+      dimension: 'grade',
+      reverse_scored: false,
+      required: true,
+      attention_check: false
+    },
+    {
+      phase: 'pre',
+      order: 3,
+      item_key: 'pre_demo_major',
+      item_text: '您的专业',
+      item_type: 'text_input',
+      scale: 'major_text',
+      instrument: 'demographics',
+      dimension: 'major',
+      reverse_scored: false,
+      required: true,
+      attention_check: false
+    },
+    {
+      phase: 'pre',
+      order: 4,
       item_key: 'pre_demo_age',
       item_text: '您的年龄',
       item_type: 'number_input',
@@ -51,7 +77,7 @@ const preQuestionnaire = {
     },
     {
       phase: 'pre',
-      order: 3,
+      order: 5,
       item_key: 'pre_identity_distress_01',
       item_text: '我会因为未来发展方向不清楚而感到困扰。',
       item_type: 'matrix_single_choice',
@@ -64,7 +90,7 @@ const preQuestionnaire = {
     },
     {
       phase: 'pre',
-      order: 4,
+      order: 6,
       item_key: 'pre_ac_umics_select_5',
       item_text: '这道题请选择5',
       item_type: 'matrix_single_choice',
@@ -84,6 +110,22 @@ const preQuestionnaire = {
       max_value: null,
       labels: null,
       options: ['男', '女']
+    },
+    grade_options: {
+      key: 'grade_options',
+      value_type: 'categorical',
+      min_value: null,
+      max_value: null,
+      labels: null,
+      options: ['大一', '大二', '大三', '大四', '硕士研究生', '博士研究生']
+    },
+    major_text: {
+      key: 'major_text',
+      value_type: 'text',
+      min_value: null,
+      max_value: null,
+      labels: null,
+      options: []
     },
     age_years: {
       key: 'age_years',
@@ -118,6 +160,7 @@ const dialogueState = {
   group: 'experiment',
   system_prompt_version: null,
   status: 'chat_in_progress',
+  initial_message_suggestion: null,
   progress: {
     participant_turn_count: 3,
     dialogue_elapsed_seconds: 261,
@@ -263,7 +306,7 @@ describe('Mentor Echo 前端 UI', () => {
           phase: 'pre',
           questionnaire_version: preQuestionnaire.questionnaire_version,
           locked: true,
-          response_count: 4,
+          response_count: 6,
           scores: [],
           session: { ...session, status: 'pre_survey_submitted' }
         });
@@ -303,6 +346,8 @@ describe('Mentor Echo 前端 UI', () => {
     expect(await screen.findByRole('heading', { name: '基本信息' })).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '男' }));
+    fireEvent.click(screen.getByRole('button', { name: '大三' }));
+    fireEvent.change(screen.getByPlaceholderText('请输入你的专业'), { target: { value: '计算机科学与技术' } });
     fireEvent.change(screen.getByPlaceholderText('请输入年龄'), { target: { value: '20' } });
     scrollIntoViewMock.mockClear();
     fireEvent.click(screen.getByRole('button', { name: '下一页' }));
