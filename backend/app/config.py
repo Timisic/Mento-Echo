@@ -15,6 +15,18 @@ class Settings(BaseSettings):
     admin_password: str = Field(default="echo2026", alias="ADMIN_PASSWORD")
     admin_token: str = Field(default="dev-admin-token-change-me", alias="ADMIN_TOKEN")
     cors_origins: str = Field(default="http://localhost:5173", alias="CORS_ORIGINS")
+    allowed_hosts: str = Field(default="*", alias="ALLOWED_HOSTS")
+    max_request_body_bytes: int = Field(default=262_144, alias="MAX_REQUEST_BODY_BYTES")
+    rate_limit_enabled: bool = Field(default=True, alias="RATE_LIMIT_ENABLED")
+    rate_limit_window_seconds: float = Field(default=60.0, alias="RATE_LIMIT_WINDOW_SECONDS")
+    rate_limit_general_per_minute: int = Field(default=300, alias="RATE_LIMIT_GENERAL_PER_MINUTE")
+    rate_limit_participant_per_minute: int = Field(default=120, alias="RATE_LIMIT_PARTICIPANT_PER_MINUTE")
+    rate_limit_chat_per_minute: int = Field(default=20, alias="RATE_LIMIT_CHAT_PER_MINUTE")
+    rate_limit_admin_per_minute: int = Field(default=120, alias="RATE_LIMIT_ADMIN_PER_MINUTE")
+    rate_limit_admin_login_per_minute: int = Field(default=10, alias="RATE_LIMIT_ADMIN_LOGIN_PER_MINUTE")
+    admin_login_lockout_attempts: int = Field(default=5, alias="ADMIN_LOGIN_LOCKOUT_ATTEMPTS")
+    admin_login_lockout_seconds: float = Field(default=300.0, alias="ADMIN_LOGIN_LOCKOUT_SECONDS")
+    trust_proxy_headers: bool = Field(default=False, alias="TRUST_PROXY_HEADERS")
     ai_provider_name: str = Field(default="mock", alias="AI_PROVIDER_NAME")
     ai_base_url: str = Field(default="https://api.openai.com/v1", alias="AI_BASE_URL")
     ai_api_key: str | None = Field(default=None, alias="AI_API_KEY")
@@ -44,6 +56,10 @@ class Settings(BaseSettings):
     codex_cwd: str | None = Field(default=None, alias="CODEX_CWD")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def allowed_host_list(self) -> list[str]:
+        return [host.strip() for host in self.allowed_hosts.split(",") if host.strip()]
 
     @property
     def cors_origin_list(self) -> list[str]:

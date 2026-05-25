@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import hmac
 import logging
+import threading
+import time
+from collections import defaultdict, deque
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -62,6 +66,74 @@ from app.services import (
 logger = logging.getLogger(__name__)
 settings = get_settings()
 app = FastAPI(title="Mentor Echo API", version="0.1.0")
+
+
+class InMemoryWindowLimiter:
+    def __init__(self) -> None:
+        self._events: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def check(self, key: str, *, limit: int, window_seconds: float, now: float | None = None) -> int | None:
+        if limit <= 0 or window_seconds <= 0:
+            return None
+        now = time.monotonic() if now is None else now
+        cutoff = now - window_seconds
+        with self._lock:
+            events = self._events[key]
+            while events and events[0] <= cutoff:
+                events.popleft()
+            if len(events) >= limit:
+                retry_after = max(1, int(events[0] + window_seconds - now) + 1)
+                return retry_after
+            events.append(now)
+        return None
+
+    def clear(self) -> None:
+        with self._lock:
+            self._events.clear()
+
+
+class AdminLoginFailureTracker:
+    def __init__(self) -> None:
+        self._failures: dict[str, tuple[int, float]] = {}
+        self._lock = threading.Lock()
+
+    def retry_after(self, key: str, *, max_attempts: int, lockout_seconds: float) -> int | None:
+        if max_attempts <= 0 or lockout_seconds <= 0:
+            return None
+        now = time.monotonic()
+        with self._lock:
+            count, locked_until = self._failures.get(key, (0, 0.0))
+            if count >= max_attempts and locked_until > now:
+                return max(1, int(locked_until - now) + 1)
+            if locked_until <= now and count >= max_attempts:
+                self._failures.pop(key, None)
+        return None
+
+    def record_failure(self, key: str, *, max_attempts: int, lockout_seconds: float) -> None:
+        if max_attempts <= 0 or lockout_seconds <= 0:
+            return
+        now = time.monotonic()
+        with self._lock:
+            count, locked_until = self._failures.get(key, (0, 0.0))
+            if locked_until <= now and count >= max_attempts:
+                count = 0
+            count += 1
+            locked_until = now + lockout_seconds if count >= max_attempts else 0.0
+            self._failures[key] = (count, locked_until)
+
+    def record_success(self, key: str) -> None:
+        with self._lock:
+            self._failures.pop(key, None)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._failures.clear()
+
+
+_RATE_LIMITER = InMemoryWindowLimiter()
+_ADMIN_LOGIN_FAILURES = AdminLoginFailureTracker()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -73,8 +145,14 @@ app.add_middleware(
 
 @app.middleware("http")
 async def preserve_cors_headers_for_api_errors(request: Request, call_next):
+    security_response = _security_preflight_response(request)
+    if security_response is not None:
+        _apply_cors_headers(request, security_response)
+        _apply_security_headers(security_response)
+        return security_response
     response = await call_next(request)
     _apply_cors_headers(request, response)
+    _apply_security_headers(response)
     return response
 
 
@@ -113,9 +191,102 @@ def _cors_origin_allowed(origin: str) -> bool:
     return "*" in origins or origin in origins
 
 
+def _apply_security_headers(response: Response) -> None:
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Cache-Control", "no-store")
+
+
+def _security_preflight_response(request: Request) -> JSONResponse | None:
+    settings = get_settings()
+    if not _host_allowed(request.headers.get("host", ""), settings.allowed_host_list):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": "Invalid Host header"},
+        )
+
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            body_bytes = int(content_length)
+        except ValueError:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"detail": "Invalid Content-Length header"},
+            )
+        if settings.max_request_body_bytes > 0 and body_bytes > settings.max_request_body_bytes:
+            return JSONResponse(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                content={"detail": "Request body too large"},
+            )
+
+    retry_after = _rate_limit_retry_after(request)
+    if retry_after is not None:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={"detail": "Too many requests"},
+            headers={"Retry-After": str(retry_after)},
+        )
+    return None
+
+
+def _host_allowed(host_header: str, allowed_hosts: list[str]) -> bool:
+    if not allowed_hosts or "*" in allowed_hosts:
+        return True
+    host = host_header.strip().lower()
+    if not host:
+        return False
+    host_without_port = host
+    if host.startswith("[") and "]" in host:
+        host_without_port = host[1 : host.index("]")]
+    elif host.count(":") == 1:
+        host_without_port = host.rsplit(":", 1)[0]
+    normalized_allowed = {allowed.lower() for allowed in allowed_hosts}
+    return host in normalized_allowed or host_without_port in normalized_allowed
+
+
+def _client_ip(request: Request) -> str:
+    settings = get_settings()
+    if settings.trust_proxy_headers:
+        forwarded_for = request.headers.get("x-forwarded-for")
+        if forwarded_for:
+            return forwarded_for.split(",", 1)[0].strip()
+        real_ip = request.headers.get("x-real-ip")
+        if real_ip:
+            return real_ip.strip()
+    if request.client is None:
+        return "unknown"
+    return request.client.host
+
+
+def _rate_limit_retry_after(request: Request) -> int | None:
+    settings = get_settings()
+    if not settings.rate_limit_enabled:
+        return None
+    category, limit = _rate_limit_category_and_limit(request.url.path, settings)
+    key = f"{category}:{_client_ip(request)}"
+    return _RATE_LIMITER.check(key, limit=limit, window_seconds=settings.rate_limit_window_seconds)
+
+
+def _rate_limit_category_and_limit(path: str, settings) -> tuple[str, int]:
+    if path == "/api/admin/login":
+        return "admin-login", settings.rate_limit_admin_login_per_minute
+    if path.startswith("/api/admin"):
+        return "admin", settings.rate_limit_admin_per_minute
+    if path.startswith("/api/participant/sessions/") and path.endswith("/dialogue/messages"):
+        return "chat", settings.rate_limit_chat_per_minute
+    if path.startswith("/api/participant"):
+        return "participant", settings.rate_limit_participant_per_minute
+    return "general", settings.rate_limit_general_per_minute
+
+
+def _admin_login_key(request: Request, username: str) -> str:
+    return f"{_client_ip(request)}:{username.strip().lower()}"
+
+
 def require_admin(authorization: str | None = Header(default=None)) -> str:
     expected = f"Bearer {get_settings().admin_token}"
-    if authorization != expected:
+    if authorization is None or not hmac.compare_digest(authorization, expected):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin token required")
     return get_settings().admin_username
 
@@ -131,10 +302,32 @@ def health() -> dict[str, object]:
 
 
 @app.post("/api/admin/login", response_model=AdminLoginResponse)
-def admin_login(payload: AdminLoginRequest, db: Session = Depends(get_session)) -> AdminLoginResponse:
+def admin_login(
+    payload: AdminLoginRequest, request: Request, db: Session = Depends(get_session)
+) -> AdminLoginResponse:
     settings = get_settings()
-    if payload.username != settings.admin_username or payload.password != settings.admin_password:
+    login_key = _admin_login_key(request, payload.username)
+    retry_after = _ADMIN_LOGIN_FAILURES.retry_after(
+        login_key,
+        max_attempts=settings.admin_login_lockout_attempts,
+        lockout_seconds=settings.admin_login_lockout_seconds,
+    )
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts",
+            headers={"Retry-After": str(retry_after)},
+        )
+    valid_username = hmac.compare_digest(payload.username, settings.admin_username)
+    valid_password = hmac.compare_digest(payload.password, settings.admin_password)
+    if not (valid_username and valid_password):
+        _ADMIN_LOGIN_FAILURES.record_failure(
+            login_key,
+            max_attempts=settings.admin_login_lockout_attempts,
+            lockout_seconds=settings.admin_login_lockout_seconds,
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    _ADMIN_LOGIN_FAILURES.record_success(login_key)
     log_audit(
         db,
         admin_id=settings.admin_username,

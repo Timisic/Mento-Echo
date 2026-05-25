@@ -211,7 +211,7 @@ docs/pilot-readiness-check.md
 
 ## AI 模型配置
 
-默认 `.env.example` 使用 mock provider，不会调用外部模型。当前真实模型验收配置优先使用 Codex GPT-5.5，并在 30 秒内无法返回时降级到 DeepSeek/OpenAI-compatible provider：
+默认 `.env.example` 使用 mock provider，不会调用外部模型。真实模型可配置为 OpenAI/DeepSeek/OpenAI-compatible provider；当前公网实验部署使用 OpenAI：
 
 ```text
 # 当前默认研究一预实验单组；后续研究二可改为 grouped
@@ -219,14 +219,14 @@ STUDY_MODE=pilot_single
 SELF_REGISTRATION_ENABLED=true
 PARTICIPANT_CODE_PREFIX=P
 
-# mock | deepseek | openai-compatible | codex
-AI_PROVIDER_NAME=codex
-AI_BASE_URL=https://api.deepseek.com/v1
+# mock | openai | deepseek | openai-compatible | codex
+AI_PROVIDER_NAME=openai
+AI_BASE_URL=https://api.openai.com/v1
 AI_MODEL_NAME=gpt-5.5
 AI_API_KEY=
-AI_TEMPERATURE=0.3
-AI_MAX_TOKENS=600
-AI_TIMEOUT_SECONDS=30
+AI_TEMPERATURE=1
+AI_MAX_TOKENS=800
+AI_TIMEOUT_SECONDS=45
 
 # AI_PROVIDER_NAME=codex 时使用；Codex CLI 需在服务器上预先安装并登录
 CODEX_COMMAND=codex app-server --disable hooks
@@ -236,8 +236,8 @@ CODEX_REASONING_EFFORT=low
 CODEX_READ_TIMEOUT_SECONDS=5
 CODEX_TURN_TIMEOUT_SECONDS=25
 
-# Fallback used when Codex fails or misses the 30-second response SLA.
-AI_FALLBACK_ENABLED=true
+# Optional fallback provider. Keep disabled unless a second provider/key is intentionally configured.
+AI_FALLBACK_ENABLED=false
 AI_FALLBACK_PROVIDER_NAME=deepseek
 AI_FALLBACK_BASE_URL=https://api.deepseek.com
 AI_FALLBACK_MODEL_NAME=deepseek-v4-pro
@@ -250,6 +250,30 @@ AI_FALLBACK_MAX_ATTEMPTS=2
 真实模型调用可能产生外部 API 或 Codex 账号费用。API Key 只应保存在本地 `.env` 或部署环境变量中。当前 AI 对话决策是 promptless：后端不应向模型发送系统提示词、developer/base instruction 或话题引导。Codex 模式会把每个 Experiment Session 的 Codex thread id 存入数据库，以便浏览器刷新或后端重启后继续同一段对话。
 
 Codex 原生提速优先路径：当前机器 `codex-cli 0.132.0` 已可用，`~/.codex/config.toml` 默认模型为 `gpt-5.5`，因此 provider 配置应优先使用 `AI_MODEL_NAME=gpt-5.5`。当前每轮直接启动 `codex app-server --disable hooks` 会有冷启动成本；更快的原生路径是使用 Codex app-server daemon + `codex app-server proxy` 复用常驻服务。实测本机 `codex app-server daemon start` 提示缺少 standalone Codex install（需要 Codex installer 管理的 `~/.codex/packages/standalone/current/codex`），所以要启用 daemon/proxy 提速，需要先安装 standalone Codex；在此之前仍应保留 30 秒 SLA 和 DeepSeek 降级。
+
+
+## 公网 IPv4 安全控制
+
+当实验平台直接用公网 IPv4 发布时，模型 provider key 只应保存在后端 `.env` / 部署环境变量中，并配置以下应用级防护：
+
+```text
+CORS_ORIGINS=http://YOUR_IPV4:5173
+ALLOWED_HOSTS=YOUR_IPV4,localhost,127.0.0.1
+MAX_REQUEST_BODY_BYTES=262144
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_GENERAL_PER_MINUTE=300
+RATE_LIMIT_PARTICIPANT_PER_MINUTE=120
+RATE_LIMIT_CHAT_PER_MINUTE=20
+RATE_LIMIT_ADMIN_PER_MINUTE=120
+RATE_LIMIT_ADMIN_LOGIN_PER_MINUTE=10
+ADMIN_LOGIN_LOCKOUT_ATTEMPTS=5
+ADMIN_LOGIN_LOCKOUT_SECONDS=300
+TRUST_PROXY_HEADERS=false
+```
+
+这些控制会拒绝异常 `Host` 头、过大的请求体、请求突增、AI 对话额度滥用以及重复管理员登录失败，同时默认限额保留正常被试问卷/对话使用空间。若要更接近生产环境，还应在服务器防火墙/安全组中只开放确实需要的前后端端口，避免暴露 PostgreSQL 或其他后台服务；任何曾经粘贴到聊天或日志里的 key 都要轮换；有域名后尽快启用 HTTPS。
+
+OpenAI GPT-5 系列 chat-completions 模型会拒绝旧的 `max_tokens` 参数和非默认 `temperature`。后端会自动把 `AI_MAX_TOKENS` 映射为 `max_completion_tokens`，并对 GPT-5 系列省略非默认 temperature。
 
 ## 目录结构
 

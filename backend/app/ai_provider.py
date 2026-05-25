@@ -64,10 +64,9 @@ class OpenAICompatibleProvider:
     ) -> AIProviderResult:
         started = datetime.now(UTC)
         monotonic_started = time.perf_counter()
-        params = {
-            "temperature": self.settings.ai_temperature,
-            "max_tokens": self.settings.ai_max_tokens,
-        }
+        provider_name = self.settings.ai_provider_name.strip().lower()
+        model_name = self.settings.ai_model_name.strip().lower()
+        params = self._completion_params(provider_name=provider_name, model_name=model_name)
         if self.settings.ai_provider_name == "mock":
             latest_user = next((message["content"] for message in reversed(messages) if message["role"] == "user"), "")
             completed = datetime.now(UTC)
@@ -91,8 +90,6 @@ class OpenAICompatibleProvider:
             "messages": payload_messages,
             **params,
         }
-        provider_name = self.settings.ai_provider_name.strip().lower()
-        model_name = self.settings.ai_model_name.strip().lower()
         if provider_name == "deepseek" and model_name.startswith("deepseek-v4"):
             payload["thinking"] = {"type": "disabled"}
         request = urllib.request.Request(
@@ -131,6 +128,31 @@ class OpenAICompatibleProvider:
             response_completed_at=completed,
             duration_ms=int((time.perf_counter() - monotonic_started) * 1000),
         )
+
+    def _completion_params(self, *, provider_name: str, model_name: str) -> dict[str, float | int]:
+        params: dict[str, float | int] = {}
+        if self._uses_max_completion_tokens(provider_name=provider_name, model_name=model_name):
+            params["max_completion_tokens"] = self.settings.ai_max_tokens
+        else:
+            params["max_tokens"] = self.settings.ai_max_tokens
+        if self._supports_temperature(provider_name=provider_name, model_name=model_name):
+            params["temperature"] = self.settings.ai_temperature
+        return params
+
+    @staticmethod
+    def _uses_max_completion_tokens(*, provider_name: str, model_name: str) -> bool:
+        return provider_name == "openai" and (
+            model_name.startswith("gpt-5")
+            or model_name.startswith("o1")
+            or model_name.startswith("o3")
+            or model_name.startswith("o4")
+        )
+
+    @staticmethod
+    def _supports_temperature(*, provider_name: str, model_name: str) -> bool:
+        if provider_name == "openai" and model_name.startswith("gpt-5"):
+            return False
+        return True
 
 
 class CodexAppServerProvider:

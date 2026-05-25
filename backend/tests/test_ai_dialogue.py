@@ -158,6 +158,50 @@ def test_openai_compatible_payload_omits_system_message_when_promptless(monkeypa
     }
 
 
+
+def test_openai_gpt5_payload_uses_supported_token_and_temperature_params(monkeypatch):
+    import json
+    import urllib.request
+
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}'
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    provider = OpenAICompatibleProvider(
+        Settings(
+            AI_PROVIDER_NAME="openai",
+            AI_BASE_URL="https://api.openai.com/v1",
+            AI_MODEL_NAME="gpt-5.5",
+            AI_API_KEY="test-key",
+            AI_TEMPERATURE=0.3,
+            AI_MAX_TOKENS=800,
+        )
+    )
+
+    result = provider.generate(system_prompt="", messages=[{"role": "user", "content": "hello"}])
+
+    assert result.content == "ok"
+    assert captured["payload"] == {
+        "model": "gpt-5.5",
+        "messages": [{"role": "user", "content": "hello"}],
+        "max_completion_tokens": 800,
+    }
+    assert result.generation_params["max_completion_tokens"] == 800
+    assert "temperature" not in result.generation_params
+
 def test_deepseek_v4_payload_disables_thinking_for_sla_fallback(monkeypatch):
     import json
     import urllib.request

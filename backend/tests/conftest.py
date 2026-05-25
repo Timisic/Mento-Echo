@@ -39,10 +39,12 @@ os.environ.setdefault("ADMIN_PASSWORD", "test-admin-password")
 os.environ.setdefault("ADMIN_TOKEN", "test-admin-token")
 os.environ.setdefault("AI_PROVIDER_NAME", "mock")
 os.environ.setdefault("AI_MODEL_NAME", "mock-mentor-echo")
+os.environ.setdefault("ALLOWED_HOSTS", "*")
+os.environ.setdefault("RATE_LIMIT_ENABLED", "true")
 
 from app.config import get_settings  # noqa: E402
 from app.db import get_engine, reset_engine  # noqa: E402
-from app.main import app  # noqa: E402
+from app.main import _ADMIN_LOGIN_FAILURES, _RATE_LIMITER, app  # noqa: E402
 from app.models import Base  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
@@ -56,6 +58,8 @@ def drop_test_schema(engine) -> None:
 @pytest.fixture(autouse=True)
 def reset_database() -> None:
     get_settings.cache_clear()
+    _RATE_LIMITER.clear()
+    _ADMIN_LOGIN_FAILURES.clear()
     reset_engine()
     engine = get_engine()
     drop_test_schema(engine)
