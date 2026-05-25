@@ -45,6 +45,11 @@ DEEPSEEK_200_CHAR_DIALOGUE_MODE = "deepseek_200_char_limit_v1"
 DEEPSEEK_200_CHAR_SYSTEM_PROMPT = (
     "请用简体中文回答，严格不超过200字。最多一段，不列长清单。保持中立、简洁，围绕用户的专业选择与未来方向。"
 )
+OPENAI_500_CHAR_DIALOGUE_MODE = "openai_500_char_guidance_v1"
+OPENAI_500_CHAR_SYSTEM_PROMPT = (
+    "请用简体中文回答。总体控制在约500个中文汉字左右；如果问题复杂，可以略多但要优先完整收束，"
+    "不要写到一半停下。避免过长清单，不需要覆盖所有角度；围绕用户的专业选择与未来方向，保持中立、具体、支持性。"
+)
 CANONICAL_STATUSES = {
     "not_started",
     "pre_survey_submitted",
@@ -1069,8 +1074,11 @@ class DialogueService:
 
     @staticmethod
     def _dialogue_prompt_config(settings: Settings) -> PromptConfig:
-        if settings.ai_provider_name.strip().lower() == "deepseek":
+        provider_name = settings.ai_provider_name.strip().lower()
+        if provider_name == "deepseek":
             return PromptConfig(DEEPSEEK_200_CHAR_DIALOGUE_MODE, DEEPSEEK_200_CHAR_SYSTEM_PROMPT)
+        if provider_name == "openai":
+            return PromptConfig(OPENAI_500_CHAR_DIALOGUE_MODE, OPENAI_500_CHAR_SYSTEM_PROMPT)
         return PromptConfig(PROMPTLESS_DIALOGUE_MODE, "")
 
     @staticmethod

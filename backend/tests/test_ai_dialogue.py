@@ -57,12 +57,19 @@ def test_ai_provider_boundary_mock_and_missing_key_behavior():
     assert "key" in exc.value.message.lower()
 
 
-def test_dialogue_uses_200_char_system_prompt_for_deepseek_only():
+def test_dialogue_prompt_config_uses_provider_specific_length_guidance():
     deepseek_prompt = DialogueService._dialogue_prompt_config(
         Settings(AI_PROVIDER_NAME="deepseek", AI_MODEL_NAME="deepseek-v4-pro")
     )
     assert deepseek_prompt.version == "deepseek_200_char_limit_v1"
     assert "严格不超过200字" in deepseek_prompt.system_prompt
+
+    openai_prompt = DialogueService._dialogue_prompt_config(
+        Settings(AI_PROVIDER_NAME="openai", AI_MODEL_NAME="gpt-5.5")
+    )
+    assert openai_prompt.version == "openai_500_char_guidance_v1"
+    assert "约500个中文汉字" in openai_prompt.system_prompt
+    assert "不要写到一半停下" in openai_prompt.system_prompt
 
     mock_prompt = DialogueService._dialogue_prompt_config(Settings(AI_PROVIDER_NAME="mock"))
     assert mock_prompt.version == PROMPTLESS_DIALOGUE_MODE
@@ -108,9 +115,66 @@ def test_dialogue_injects_deepseek_prompt_and_records_version(client, admin_head
     assert "严格不超过200字" in str(captured["system_prompt"])
     assert captured["messages"][-1]["content"] == "我是心理学专业，想转人工智能。"
     db_session.expire_all()
-    messages = db_session.query(ChatMessage).filter_by(experiment_session_id=session_id).order_by(ChatMessage.message_index).all()
+    messages = (
+        db_session.query(ChatMessage)
+        .filter_by(experiment_session_id=session_id)
+        .order_by(ChatMessage.message_index)
+        .all()
+    )
     assert messages[1].system_prompt_version == "deepseek_200_char_limit_v1"
     assert messages[1].generation_params["prompt_mode"] == "deepseek_200_char_limit_v1"
+
+
+def test_dialogue_injects_openai_500_char_prompt_and_records_version(
+    client, admin_headers, db_session, monkeypatch
+):
+    captured: dict[str, object] = {}
+
+    class FakeProvider:
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            captured["system_prompt"] = system_prompt
+            timestamp = now_utc()
+            return AIProviderResult(
+                content="可以先用一个学期试探AI方向：补编程和机器学习基础，同时保留心理学交叉优势。",
+                provider_name="openai",
+                model_name="gpt-5.5",
+                generation_params={"max_completion_tokens": 2000},
+                request_started_at=timestamp,
+                response_completed_at=timestamp,
+                duration_ms=1,
+            )
+
+    monkeypatch.setattr("app.services.create_ai_provider", lambda settings: FakeProvider())
+    monkeypatch.setattr(
+        "app.services.get_settings",
+        lambda: Settings(
+            AI_PROVIDER_NAME="openai",
+            AI_MODEL_NAME="gpt-5.5",
+            AI_API_KEY="test-key",
+            AI_MAX_TOKENS=2000,
+            AI_REASONING_EFFORT="none",
+            AI_FALLBACK_ENABLED=False,
+        ),
+    )
+    session_id = prepared_session(client, admin_headers, code="DOPENAI", group="experiment")
+
+    response = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": "我在考虑要不要转人工智能。"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert "约500个中文汉字" in str(captured["system_prompt"])
+    db_session.expire_all()
+    messages = (
+        db_session.query(ChatMessage)
+        .filter_by(experiment_session_id=session_id)
+        .order_by(ChatMessage.message_index)
+        .all()
+    )
+    assert messages[1].system_prompt_version == "openai_500_char_guidance_v1"
+    assert messages[1].generation_params["prompt_mode"] == "openai_500_char_guidance_v1"
+    assert messages[1].generation_params["max_completion_tokens"] == 2000
 
 
 def test_openai_compatible_payload_omits_system_message_when_promptless(monkeypatch):
@@ -377,7 +441,12 @@ def test_promptless_message_persistence_and_metadata(client, admin_headers, db_s
     assert "api_key" not in str(body).lower()
 
     db_session.expire_all()
-    messages = db_session.query(ChatMessage).filter_by(experiment_session_id=session_id).order_by(ChatMessage.message_index).all()
+    messages = (
+        db_session.query(ChatMessage)
+        .filter_by(experiment_session_id=session_id)
+        .order_by(ChatMessage.message_index)
+        .all()
+    )
     assert [message.role for message in messages] == ["participant", "assistant"]
     assert messages[1].provider_name == "mock"
     assert messages[1].model_name == "mock-mentor-echo"
@@ -485,7 +554,12 @@ def test_dialogue_falls_back_without_exposing_provider_to_participant(client, ad
     assert body["assistant_message"] is None
 
     db_session.expire_all()
-    messages = db_session.query(ChatMessage).filter_by(experiment_session_id=session_id).order_by(ChatMessage.message_index).all()
+    messages = (
+        db_session.query(ChatMessage)
+        .filter_by(experiment_session_id=session_id)
+        .order_by(ChatMessage.message_index)
+        .all()
+    )
     assert messages[1].content == "fallback response"
     assert messages[1].provider_name == "deepseek"
     assert messages[1].model_name == "deepseek-v4-pro"
@@ -821,7 +895,12 @@ def test_dialogue_unexpected_provider_error_completes_pending_turn(client, admin
 
     assert response.status_code == 200, response.text
     db_session.expire_all()
-    messages = db_session.query(ChatMessage).filter_by(experiment_session_id=session_id).order_by(ChatMessage.message_index).all()
+    messages = (
+        db_session.query(ChatMessage)
+        .filter_by(experiment_session_id=session_id)
+        .order_by(ChatMessage.message_index)
+        .all()
+    )
     assert [message.role for message in messages] == ["participant", "assistant"]
     assert messages[1].content == "AI 回复暂时生成失败，请稍后重试或联系研究者。"
     assert messages[1].error_code == "ai_generation_failed"
@@ -1048,7 +1127,12 @@ def test_ai_provider_failure_response_keeps_cors_header(client, admin_headers, d
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == origin
     db_session.expire_all()
-    messages = db_session.query(ChatMessage).filter_by(experiment_session_id=session_id).order_by(ChatMessage.message_index).all()
+    messages = (
+        db_session.query(ChatMessage)
+        .filter_by(experiment_session_id=session_id)
+        .order_by(ChatMessage.message_index)
+        .all()
+    )
     assert [message.role for message in messages] == ["participant", "assistant"]
     assert messages[1].content == "AI 回复暂时生成失败，请稍后重试或联系研究者。"
     assert messages[1].error_code == "provider_down"
