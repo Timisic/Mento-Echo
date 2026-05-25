@@ -129,14 +129,16 @@ class OpenAICompatibleProvider:
             duration_ms=int((time.perf_counter() - monotonic_started) * 1000),
         )
 
-    def _completion_params(self, *, provider_name: str, model_name: str) -> dict[str, float | int]:
-        params: dict[str, float | int] = {}
+    def _completion_params(self, *, provider_name: str, model_name: str) -> dict[str, str | float | int]:
+        params: dict[str, str | float | int] = {}
         if self._uses_max_completion_tokens(provider_name=provider_name, model_name=model_name):
             params["max_completion_tokens"] = self.settings.ai_max_tokens
         else:
             params["max_tokens"] = self.settings.ai_max_tokens
         if self._supports_temperature(provider_name=provider_name, model_name=model_name):
             params["temperature"] = self.settings.ai_temperature
+        if provider_name == "openai" and self.settings.ai_reasoning_effort:
+            params["reasoning_effort"] = self.settings.ai_reasoning_effort
         return params
 
     @staticmethod

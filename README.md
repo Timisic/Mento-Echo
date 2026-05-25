@@ -226,6 +226,7 @@ AI_MODEL_NAME=gpt-5.5
 AI_API_KEY=
 AI_TEMPERATURE=1
 AI_MAX_TOKENS=800
+AI_REASONING_EFFORT=none
 AI_TIMEOUT_SECONDS=45
 
 # AI_PROVIDER_NAME=codex 时使用；Codex CLI 需在服务器上预先安装并登录
@@ -273,7 +274,7 @@ TRUST_PROXY_HEADERS=false
 
 这些控制会拒绝异常 `Host` 头、过大的请求体、请求突增、AI 对话额度滥用以及重复管理员登录失败，同时默认限额保留正常被试问卷/对话使用空间。若要更接近生产环境，还应在服务器防火墙/安全组中只开放确实需要的前后端端口，避免暴露 PostgreSQL 或其他后台服务；任何曾经粘贴到聊天或日志里的 key 都要轮换；有域名后尽快启用 HTTPS。
 
-OpenAI GPT-5 系列 chat-completions 模型会拒绝旧的 `max_tokens` 参数和非默认 `temperature`。后端会自动把 `AI_MAX_TOKENS` 映射为 `max_completion_tokens`，并对 GPT-5 系列省略非默认 temperature。
+OpenAI GPT-5 系列 chat-completions 模型会拒绝旧的 `max_tokens` 参数和非默认 `temperature`。后端会自动把 `AI_MAX_TOKENS` 映射为 `max_completion_tokens`，并对 GPT-5 系列省略非默认 temperature。若使用支持该值的 GPT-5.1+ / 当前 `gpt-5.5` 类模型，建议设置 `AI_REASONING_EFFORT=none`，避免普通聊天把输出额度耗尽在不可见 reasoning tokens 上。
 
 ## 目录结构
 

@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     ai_model_name: str = Field(default="mock-mentor-echo", alias="AI_MODEL_NAME")
     ai_temperature: float = Field(default=0.3, alias="AI_TEMPERATURE")
     ai_max_tokens: int = Field(default=600, alias="AI_MAX_TOKENS")
+    ai_reasoning_effort: str | None = Field(default=None, alias="AI_REASONING_EFFORT")
     ai_timeout_seconds: float = Field(default=10.0, alias="AI_TIMEOUT_SECONDS")
     ai_response_sla_seconds: float = Field(default=30.0, alias="AI_RESPONSE_SLA_SECONDS")
     ai_fallback_enabled: bool = Field(default=True, alias="AI_FALLBACK_ENABLED")
