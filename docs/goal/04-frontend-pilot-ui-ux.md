@@ -319,7 +319,7 @@ App
 - [ ] Questionnaire UI renders backend-provided content for `mentor_echo_questionnaire_v2026_05_15_major_umics_only` without changing wording or scoring assumptions.
 - [ ] AI dialogue UI shows 10-message + 15-minute completion progress and explains blocked/eligible states in Chinese.
 - [ ] Dialogue provider calls are length-guarded promptless: only the neutral length/completeness guard is sent; no developer instruction, base instruction, persona, counseling style instruction, or model-side topic guidance is sent.
-- [ ] Codex GPT-5.5 is preferred, but a participant-facing reply must be available within 10 seconds via Codex or fallback provider.
+- [ ] Codex GPT-5.5 is preferred, but a participant-facing reply must be available within the configured 30-second SLA via Codex or fallback provider.
 - [ ] Mobile chat is phone-first single-screen at 375×667 and 390×844: no horizontal scrolling, no sideways drag, message text wraps, and the input remains reachable.
 - [ ] Desktop chat also has no horizontal page/chat overflow.
 - [ ] Researcher dashboard supports pilot operations with summary cards, table, reset/exclusion confirmations, export confirmation, and sensitive raw-chat warning.
@@ -339,7 +339,7 @@ Run and report:
 - Manual/UI smoke path for researcher dashboard
 - Privacy check that participant UI hides admin/internal fields and dashboard does not inline raw chat
 - Responsive check at 375×667, 390×844, tablet, and desktop widths with no horizontal scrolling in the chat page
-- Provider behavior check that model calls are promptless and Codex timeout/fallback still satisfies the 10-second participant response SLA
+- Provider behavior check that model calls are promptless and Codex timeout/fallback still satisfies the configured 30-second participant response SLA
 
 ## Blocked by
 

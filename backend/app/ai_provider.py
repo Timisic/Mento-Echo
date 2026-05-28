@@ -73,9 +73,13 @@ class OpenAICompatibleProvider:
         params = self._completion_params(provider_name=provider_name, model_name=model_name)
         if self.settings.ai_provider_name == "mock":
             latest_user = next((message["content"] for message in reversed(messages) if message["role"] == "user"), "")
+            if "有效用户回合" in system_prompt:
+                content = "1"
+            else:
+                content = f"[mock:{self.settings.ai_model_name}] 我会继续陪你讨论：{latest_user[:120]}"
             completed = datetime.now(UTC)
             return AIProviderResult(
-                content=f"[mock:{self.settings.ai_model_name}] 我会继续陪你讨论：{latest_user[:120]}",
+                content=content,
                 provider_name="mock",
                 model_name=self.settings.ai_model_name,
                 generation_params=params,

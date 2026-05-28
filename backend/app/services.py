@@ -858,7 +858,6 @@ class DialogueService:
             )
             db.commit()
             db.refresh(session)
-        DialogueService.update_progress(db, session=session)
         return DialogueService.messages(db, session_id=session.id)
 
     @staticmethod
@@ -1167,10 +1166,11 @@ class DialogueService:
         settings = get_settings()
         verifier_settings = DialogueService._effective_turn_verifier_settings(settings)
         if verifier_settings is None:
-            label = 1 if DialogueService.is_effective_participant_turn(message.content) else 0
-            message.effective_turn_source = "local_fallback_no_verifier"
+            message.effective_turn_source = "verifier_unavailable"
+            message.effective_turn_excluded_reason = "manual_review_required"
             message.effective_turn_verifier_prompt_version = EFFECTIVE_TURN_VERIFIER_PROMPT_VERSION
-            return label
+            message.effective_turn_verifier_response = "effective turn verifier is not configured"
+            return 9
         previous_messages = list(
             db.scalars(
                 select(ChatMessage)
@@ -1199,33 +1199,28 @@ class DialogueService:
                 provider_thread_id=None,
             )
         except AIProviderError as exc:
-            label = 1 if DialogueService.is_effective_participant_turn(message.content) else 0
-            message.effective_turn_source = "local_fallback_verifier_error"
-            message.effective_turn_excluded_reason = (
-                None if label == 1 else "verifier_error_local_non_substantive"
-            )
+            message.effective_turn_source = "verifier_error"
+            message.effective_turn_excluded_reason = "manual_review_required"
             message.effective_turn_verifier_provider = verifier_settings.ai_provider_name
             message.effective_turn_verifier_model = verifier_settings.ai_model_name
             message.effective_turn_verifier_prompt_version = EFFECTIVE_TURN_VERIFIER_PROMPT_VERSION
             message.effective_turn_verifier_response = sanitize_error_message(exc.message)
-            return label
+            return 9
         except Exception as exc:
-            label = 1 if DialogueService.is_effective_participant_turn(message.content) else 0
-            message.effective_turn_source = "local_fallback_verifier_error"
-            message.effective_turn_excluded_reason = (
-                None if label == 1 else "verifier_error_local_non_substantive"
-            )
+            message.effective_turn_source = "verifier_error"
+            message.effective_turn_excluded_reason = "manual_review_required"
             message.effective_turn_verifier_provider = verifier_settings.ai_provider_name
             message.effective_turn_verifier_model = verifier_settings.ai_model_name
             message.effective_turn_verifier_prompt_version = EFFECTIVE_TURN_VERIFIER_PROMPT_VERSION
             message.effective_turn_verifier_response = sanitize_error_message(str(exc))
-            return label
+            return 9
         label = DialogueService._parse_effective_turn_label(result.content)
         message.effective_turn_source = "verifier"
         message.effective_turn_verifier_provider = result.provider_name
         message.effective_turn_verifier_model = result.model_name
         message.effective_turn_verifier_prompt_version = EFFECTIVE_TURN_VERIFIER_PROMPT_VERSION
         message.effective_turn_verifier_response = result.content[:500]
+        message.effective_turn_excluded_reason = None
         if label == 9:
             message.effective_turn_excluded_reason = "manual_review_required"
         elif label == 0:
@@ -1256,27 +1251,27 @@ class DialogueService:
         )
 
     @staticmethod
-    def update_progress(db: Session, *, session: ExperimentSession) -> dict[str, object]:
-        participant_messages = list(
-            db.scalars(
-                select(ChatMessage)
-                .where(ChatMessage.experiment_session_id == session.id, ChatMessage.role == "participant")
-                .order_by(ChatMessage.message_index)
-            )
-        )
-        participant_turns = sum(
-            1
-            for message in participant_messages
-            if DialogueService._effective_turn_label(db, session=session, message=message) == 1
-        )
-        elapsed = DialogueService._active_elapsed_seconds(session)
-        session.participant_turn_count = int(participant_turns)
-        session.dialogue_elapsed_seconds = elapsed
+    def _countable_effective_turn(message: ChatMessage) -> bool:
+        return message.effective_turn_label == 1 and message.effective_turn_source == "verifier"
+
+    @staticmethod
+    def _progress_payload(
+        *,
+        session: ExperimentSession,
+        participant_turns: int,
+        elapsed: int,
+        mutate_session: bool,
+        db: Session | None = None,
+    ) -> dict[str, object]:
+        if mutate_session:
+            session.participant_turn_count = int(participant_turns)
+            session.dialogue_elapsed_seconds = elapsed
 
         met_min_turns = participant_turns >= DialogueService.MIN_PARTICIPANT_TURNS
         met_min_duration = elapsed >= DialogueService.MIN_ELAPSED_SECONDS
         forced_finish_reason = DialogueService._forced_finish_reason(session, participant_turns, elapsed)
-        session.dialogue_forced_finish_reason = forced_finish_reason
+        if mutate_session:
+            session.dialogue_forced_finish_reason = forced_finish_reason
 
         finish_prompt_visible = DialogueService._finish_prompt_visible(
             session,
@@ -1286,18 +1281,21 @@ class DialogueService:
             forced_finish_reason=forced_finish_reason,
         )
         eligible = finish_prompt_visible or forced_finish_reason is not None
-        if eligible and session.status == "chat_in_progress":
-            session.status = "chat_eligible_to_finish"
-            log_behavior(
-                db,
-                event_type="completion_eligibility_reached",
-                session=session,
-                participant_code=session.participant.participant_code if session.participant else None,
-                stage="chat_eligible_to_finish",
-                metadata={"participant_turn_count": participant_turns, "dialogue_elapsed_seconds": elapsed},
-            )
-        elif not eligible and session.status == "chat_eligible_to_finish":
-            session.status = "chat_in_progress"
+        if mutate_session:
+            if eligible and session.status == "chat_in_progress":
+                session.status = "chat_eligible_to_finish"
+                assert db is not None
+                log_behavior(
+                    db,
+                    event_type="completion_eligibility_reached",
+                    session=session,
+                    participant_code=session.participant.participant_code if session.participant else None,
+                    stage="chat_eligible_to_finish",
+                    metadata={"participant_turn_count": participant_turns, "dialogue_elapsed_seconds": elapsed},
+                )
+            elif not eligible and session.status == "chat_eligible_to_finish":
+                session.status = "chat_in_progress"
+
         reminder_due = participant_turns > 0 and participant_turns % DialogueService.REMINDER_TURN_INTERVAL == 0
         return {
             "participant_turn_count": int(participant_turns),
@@ -1313,6 +1311,48 @@ class DialogueService:
             "reminder_due": reminder_due,
             "reminder_text": DialogueService.REMINDER_TEXT,
         }
+
+    @staticmethod
+    def progress_snapshot(db: Session, *, session: ExperimentSession) -> dict[str, object]:
+        participant_messages = list(
+            db.scalars(
+                select(ChatMessage)
+                .where(ChatMessage.experiment_session_id == session.id, ChatMessage.role == "participant")
+                .order_by(ChatMessage.message_index)
+            )
+        )
+        participant_turns = sum(1 for message in participant_messages if DialogueService._countable_effective_turn(message))
+        elapsed = DialogueService._active_elapsed_seconds(session, touch_last_seen=False)
+        return DialogueService._progress_payload(
+            session=session,
+            participant_turns=int(participant_turns),
+            elapsed=elapsed,
+            mutate_session=False,
+        )
+
+    @staticmethod
+    def update_progress(db: Session, *, session: ExperimentSession) -> dict[str, object]:
+        participant_messages = list(
+            db.scalars(
+                select(ChatMessage)
+                .where(ChatMessage.experiment_session_id == session.id, ChatMessage.role == "participant")
+                .order_by(ChatMessage.message_index)
+            )
+        )
+        participant_turns = sum(
+            1
+            for message in participant_messages
+            if DialogueService._effective_turn_label(db, session=session, message=message) == 1
+            and DialogueService._countable_effective_turn(message)
+        )
+        elapsed = DialogueService._active_elapsed_seconds(session)
+        return DialogueService._progress_payload(
+            db=db,
+            session=session,
+            participant_turns=int(participant_turns),
+            elapsed=elapsed,
+            mutate_session=True,
+        )
 
     @staticmethod
     def finish(db: Session, *, session: ExperimentSession, participant: Participant, decision: str) -> None:
@@ -1594,7 +1634,7 @@ class DialogueService:
         return None
 
     @staticmethod
-    def _active_elapsed_seconds(session: ExperimentSession) -> int:
+    def _active_elapsed_seconds(session: ExperimentSession, *, touch_last_seen: bool = True) -> int:
         if session.chat_started_at is None:
             return 0
         timestamp = now_utc()
@@ -1606,7 +1646,8 @@ class DialogueService:
         gap = elapsed_seconds_between(last_seen, timestamp)
         if gap <= DialogueService.ACTIVE_ELAPSED_MAX_GAP_SECONDS:
             elapsed += gap
-        session.last_seen_at = timestamp
+        if touch_last_seen:
+            session.last_seen_at = timestamp
         return elapsed
 
     @staticmethod

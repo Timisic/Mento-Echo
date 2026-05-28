@@ -1,6 +1,6 @@
-# Prefer length-guarded promptless Codex GPT-5.5 dialogue within a 10-second response SLA
+# Prefer length-guarded promptless Codex GPT-5.5 dialogue within a 30-second response SLA
 
-The participant-facing AI dialogue should not use hidden topic prompts, developer instructions, base instructions, personas, counseling style instructions, or model-side topic guidance. One neutral length/completeness guard is allowed to prevent overly long or abruptly truncated participant-facing replies. Codex GPT-5.5 is the preferred dialogue model provider when it can return a usable assistant reply within 10 seconds; if it cannot, the platform should degrade to DeepSeek or another faster OpenAI-compatible provider rather than making the participant wait.
+The participant-facing AI dialogue should not use hidden topic prompts, developer instructions, base instructions, personas, counseling style instructions, or model-side topic guidance. One neutral length/completeness guard is allowed to prevent overly long or abruptly truncated participant-facing replies. Codex GPT-5.5 is the preferred dialogue model provider when it can return a usable assistant reply within the configured 30-second participant-facing SLA; if it cannot, the platform should degrade to DeepSeek or another faster OpenAI-compatible provider rather than making the participant wait.
 
 ## Considered Options
 

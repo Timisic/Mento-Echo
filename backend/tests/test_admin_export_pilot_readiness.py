@@ -5,6 +5,9 @@ import io
 import json
 import re
 import zipfile
+
+import pytest
+
 from app.models import AuditLog, BehaviorEvent, ExperimentSession
 from app.services import DialogueService, now_utc
 from tests.conftest import import_participants
@@ -175,6 +178,7 @@ def test_export_package_structure_content_and_privacy_boundaries(client, admin_h
         readme = archive.read(_member(names, "README.md")).decode("utf-8")
         assert "SENSITIVE RAW CHAT" in readme
         assert "6 participant turns + 10 active dialogue minutes" in readme
+        assert "effective_turn_label" in readme
         assert "mock-mentor-echo" in readme
 
         manifest = json.loads(archive.read(_member(names, "export_manifest.json")))
@@ -225,6 +229,14 @@ def test_export_package_structure_content_and_privacy_boundaries(client, admin_h
         assert {message["analysis_sample_status"] for message in chat_messages} == {
             "pending_topic_validity_coding"
         }
+        assert {
+            "effective_turn_label",
+            "effective_turn_source",
+            "effective_turn_verifier_provider",
+            "effective_turn_verifier_model",
+            "effective_turn_verifier_prompt_version",
+            "effective_turn_verifier_response",
+        } <= set(chat_messages[0])
 
         behavior_events = _jsonl_rows(archive, _member(names, "behavior_events.jsonl"))
         event_types = {str(event["event_type"]) for event in behavior_events}
@@ -257,6 +269,25 @@ def test_export_package_structure_content_and_privacy_boundaries(client, admin_h
         assert "AI_API_KEY" not in export_text
         assert "api_key" not in export_text.lower()
         assert not re.search(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", export_text)
+
+
+def test_export_completed_audit_is_not_committed_when_zip_build_fails(
+    client, admin_headers, db_session, monkeypatch
+):
+    def fail_build(*args, **kwargs):
+        raise RuntimeError("simulated export build failure")
+
+    monkeypatch.setattr("app.main.build_export_zip", fail_build)
+
+    with pytest.raises(RuntimeError, match="simulated export build failure"):
+        client.post("/api/admin/export", headers=admin_headers)
+    db_session.expire_all()
+    audit_actions = [row.action for row in db_session.query(AuditLog).order_by(AuditLog.created_at)]
+    event_types = [row.event_type for row in db_session.query(BehaviorEvent).order_by(BehaviorEvent.created_at)]
+    assert "data_export_requested" not in audit_actions
+    assert "data_export_completed" not in audit_actions
+    assert "data_export_requested" not in event_types
+    assert "data_export_completed" not in event_types
 
 
 def test_end_to_end_pilot_regression_flow_reaches_dashboard_and_export(

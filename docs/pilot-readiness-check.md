@@ -2,7 +2,7 @@
 
 Use this sequence before a researcher pilot. It validates the PostgreSQL-backed
 admin dashboard, reset/exclusion controls, behavior events, audit logs, export
-ZIP, privacy boundary, length-guarded promptless provider behavior, 10-second dialogue response SLA, mobile chat layout, and end-to-end participant flow.
+ZIP, privacy boundary, length-guarded promptless provider behavior, 30-second dialogue response SLA, mobile chat layout, and end-to-end participant flow.
 
 ## 1. Start PostgreSQL and apply migrations
 
@@ -55,7 +55,12 @@ This targeted suite covers:
   guard is sent for participant dialogue; no topic guidance, developer instruction,
   base instruction, persona, or counseling style instruction is sent;
 - Codex-first response behavior: Codex GPT-5.5 is preferred, but the participant
-  receives a usable reply within 10 seconds via Codex or configured fallback.
+  receives a usable reply within the configured 30-second SLA via Codex or configured fallback.
+- effective-turn acceptance boundary: only verifier-sourced `effective_turn_label=1`
+  counts toward the 6-turn completion rule; verifier unavailable/error states are
+  `9` manual review and do not count.
+- read-path boundary: `GET /dialogue` returns a progress snapshot without invoking
+  the verifier or writing effective-turn labels.
 
 ## 3. Run frontend checks
 
@@ -91,7 +96,7 @@ print({"provider": result.provider_name, "model": result.model_name, "response":
 PY
 ```
 
-For Codex live checks, prefer `AI_PROVIDER_NAME=codex`, `AI_MODEL_NAME=gpt-5.5`, `CODEX_TURN_TIMEOUT_SECONDS=10`, and fallback enabled. If direct `codex app-server` startup is too slow, the intended faster native path is daemon/proxy (`codex app-server daemon start` plus `CODEX_COMMAND=codex app-server proxy`), but this requires the standalone Codex install managed by the Codex installer. If daemon start reports a missing standalone install, do not treat proxy as available yet; keep the 10-second fallback to DeepSeek.
+For Codex live checks, prefer `AI_PROVIDER_NAME=codex`, `AI_MODEL_NAME=gpt-5.5`, `CODEX_TURN_TIMEOUT_SECONDS=25`, `AI_RESPONSE_SLA_SECONDS=30`, and fallback enabled. If direct `codex app-server` startup is too slow, the intended faster native path is daemon/proxy (`codex app-server daemon start` plus `CODEX_COMMAND=codex app-server proxy`), but this requires the standalone Codex install managed by the Codex installer. If daemon start reports a missing standalone install, do not treat proxy as available yet; keep the 30-second fallback boundary.
 
 Never print or commit `AI_API_KEY`, `ADMIN_PASSWORD`, `ADMIN_TOKEN`, exported raw
 chat, or researcher-held name-to-code rosters.

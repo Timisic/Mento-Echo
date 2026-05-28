@@ -166,12 +166,14 @@ MVP provider requirements:
 - Use one configured dialogue model provider selected by environment configuration: `mock`, `deepseek`/OpenAI-compatible, or `codex`.
 - Use an OpenAI-compatible chat completion interface for DeepSeek-style providers.
 - Use local `codex app-server` for Codex mode; Codex CLI installation and login are deployment prerequisites.
-- Prefer Codex GPT-5.5 for participant replies when it can return within the 10-second response SLA.
-- If Codex cannot return within 10 seconds, fall back to DeepSeek or another configured OpenAI-compatible provider instead of keeping the participant waiting.
+- Prefer Codex GPT-5.5 for participant replies when it can return within the configured 30-second response SLA.
+- If Codex cannot return within that 30-second SLA, fall back to DeepSeek or another configured OpenAI-compatible provider instead of keeping the participant waiting.
 - Keep a backend `AIProvider` boundary so the model/provider can be replaced later.
 - Do not hard-code the selected model name in business logic.
 - For Codex mode, persist the provider thread id on the Experiment Session and reuse it for all participant turns in that session.
 - Send only the neutral length/completeness guard to dialogue model providers; do not send topic guidance, research-condition prompts, personas, counseling style instructions, developer instructions, or base instructions.
+- Count dialogue completion turns only when a participant message has `effective_turn_label=1` from the internal verifier. Local prefilter/system exclusions can mark messages as not effective, but verifier unavailable/error states must be `9` manual review and must not count toward completion eligibility.
+- Participant dialogue read endpoints must not invoke the verifier or mutate effective-turn labels; classification happens on message write or an explicit reclassification path.
 
 Every AI response record should preserve enough metadata for reproducibility:
 

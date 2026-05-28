@@ -33,7 +33,7 @@ Human-readable export description:
 - questionnaire version;
 - AI provider/model configuration snapshot;
 - prompt mode (`length_guarded_promptless_v1` for the current MVP);
-- AI response SLA and fallback rule: prefer Codex GPT-5.5 within 10 seconds, otherwise fall back to DeepSeek/OpenAI-compatible provider;
+- AI response SLA and fallback rule: prefer Codex GPT-5.5 within the configured 30-second participant-facing SLA, otherwise fall back to DeepSeek/OpenAI-compatible provider;
 - completion rule: 6 participant turns + 10 active minutes;
 - group assignment rules;
 - privacy warning for raw chat;
@@ -174,6 +174,13 @@ Suggested fields:
 - `prompt_mode` for assistant messages (`length_guarded_promptless_v1` in the current MVP)
 - `generation_params` for assistant messages
 - `fallback_from_provider` / `fallback_reason` when a fallback provider was used
+- `effective_turn_label` for participant messages (`1` verified effective, `0` verified/not substantive, `9` manual review required)
+- `effective_turn_source` (`verifier`, `local_prefilter`, `system_exclusion`, `verifier_unavailable`, or `verifier_error`)
+- `effective_turn_excluded_reason`
+- `effective_turn_verifier_provider`
+- `effective_turn_verifier_model`
+- `effective_turn_verifier_prompt_version`
+- `effective_turn_verifier_response`
 
 ### behavior_events.jsonl
 

@@ -334,6 +334,132 @@ def test_effective_turn_verifier_manual_review_label_does_not_count(
     assert message.effective_turn_excluded_reason == "manual_review_required"
 
 
+def test_effective_turn_verifier_unavailable_is_manual_review_and_not_counted(
+    client, admin_headers, db_session, monkeypatch
+):
+    monkeypatch.setattr(
+        "app.services.get_settings",
+        lambda: Settings(
+            AI_PROVIDER_NAME="mock",
+            AI_MODEL_NAME="mock-mentor-echo",
+            AI_FALLBACK_ENABLED=False,
+        ),
+    )
+    session_id = prepared_session(client, admin_headers, code="DNOVERIFY", group="experiment")
+
+    response = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": "我正在认真比较继续本专业读研和转向产品岗位。"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["progress"]["participant_turn_count"] == 0
+    db_session.expire_all()
+    message = (
+        db_session.query(ChatMessage)
+        .filter_by(experiment_session_id=session_id, role="participant")
+        .one()
+    )
+    assert message.effective_turn_label == 9
+    assert message.effective_turn_source == "verifier_unavailable"
+    assert message.effective_turn_excluded_reason == "manual_review_required"
+    assert message.effective_turn_verifier_response == "effective turn verifier is not configured"
+
+
+def test_effective_turn_verifier_error_is_manual_review_and_not_counted(
+    client, admin_headers, db_session, monkeypatch
+):
+    class FailingVerifierProvider:
+        def __init__(self, settings):
+            self.settings = settings
+
+        def generate(self, *, system_prompt, messages, provider_thread_id=None):
+            if "有效用户回合" in system_prompt:
+                raise AIProviderError("provider_timeout", "simulated verifier timeout")
+            timestamp = now_utc()
+            return AIProviderResult(
+                content="收到，我会继续回应你的想法。",
+                provider_name=self.settings.ai_provider_name,
+                model_name=self.settings.ai_model_name,
+                generation_params={},
+                request_started_at=timestamp,
+                response_completed_at=timestamp,
+                duration_ms=1,
+            )
+
+    monkeypatch.setattr("app.services.create_ai_provider", lambda settings: FailingVerifierProvider(settings))
+    monkeypatch.setattr(
+        "app.services.get_settings",
+        lambda: Settings(
+            AI_PROVIDER_NAME="openai",
+            AI_MODEL_NAME="gpt-5.5",
+            AI_API_KEY="primary-key",
+            AI_FALLBACK_ENABLED=True,
+            AI_FALLBACK_PROVIDER_NAME="deepseek",
+            AI_FALLBACK_API_KEY="fallback-key",
+            AI_FALLBACK_MODEL_NAME="deepseek-v4-pro",
+        ),
+    )
+    session_id = prepared_session(client, admin_headers, code="DVERIFYERR", group="experiment")
+
+    response = client.post(
+        f"/api/participant/sessions/{session_id}/dialogue/messages",
+        json={"content": "我正在认真比较继续本专业读研和转向产品岗位。"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["progress"]["participant_turn_count"] == 0
+    db_session.expire_all()
+    message = (
+        db_session.query(ChatMessage)
+        .filter_by(experiment_session_id=session_id, role="participant")
+        .one()
+    )
+    assert message.effective_turn_label == 9
+    assert message.effective_turn_source == "verifier_error"
+    assert message.effective_turn_excluded_reason == "manual_review_required"
+    assert message.effective_turn_verifier_provider == "deepseek"
+    assert message.effective_turn_verifier_model == "deepseek-v4-pro"
+    assert message.effective_turn_verifier_response == "simulated verifier timeout"
+
+
+def test_get_dialogue_does_not_classify_unlabeled_turns(
+    client, admin_headers, db_session, monkeypatch
+):
+    session_id = prepared_session(client, admin_headers, code="DREADPURE", group="experiment")
+    assert client.get(f"/api/participant/sessions/{session_id}/dialogue").status_code == 200
+    session = db_session.get(ExperimentSession, session_id)
+    assert session is not None
+    db_session.add(
+        ChatMessage(
+            experiment_session_id=session_id,
+            participant_code="DREADPURE",
+            message_index=1,
+            role="participant",
+            content="我还没有被写路径分类。",
+        )
+    )
+    db_session.commit()
+
+    def fail_if_called(settings):
+        raise AssertionError("GET /dialogue must not call the verifier provider")
+
+    monkeypatch.setattr("app.services.create_ai_provider", fail_if_called)
+
+    state = client.get(f"/api/participant/sessions/{session_id}/dialogue")
+
+    assert state.status_code == 200, state.text
+    assert state.json()["progress"]["participant_turn_count"] == 0
+    db_session.expire_all()
+    message = (
+        db_session.query(ChatMessage)
+        .filter_by(experiment_session_id=session_id, role="participant")
+        .one()
+    )
+    assert message.effective_turn_label is None
+    assert message.effective_turn_source is None
+
+
 def test_openai_compatible_payload_omits_system_message_when_promptless(monkeypatch):
     import json
     import urllib.request

@@ -555,8 +555,9 @@ def export_package(
         stage="export",
         metadata={"admin_id": admin_id},
     )
-    db.commit()
+    db.flush()
     content, filename = build_export_zip(db, admin_id=admin_id)
+    db.commit()
     return Response(
         content=content,
         media_type="application/zip",
@@ -781,8 +782,7 @@ def reset_questionnaire(
 def get_dialogue(session_id: str, db: Session = Depends(get_session)) -> DialogueStateResponse:
     session, participant = _get_session_and_participant(db, session_id)
     messages = DialogueService.start_or_get(db, session=session, participant=participant)
-    progress = DialogueService.update_progress(db, session=session)
-    db.commit()
+    progress = DialogueService.progress_snapshot(db, session=session)
     return DialogueStateResponse(
         experiment_session_id=session.id,
         participant_code=participant.participant_code,

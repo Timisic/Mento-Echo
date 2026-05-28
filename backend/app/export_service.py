@@ -471,7 +471,7 @@ must not become a competing source of truth.
 - `questionnaire_scores.csv`: long-form derived questionnaire scores.
 - `analysis_dataset.csv`: one row per participant for routine analysis. It intentionally excludes raw chat text.
 - Topic validity fields: `topic_off_track_ratio`, `topic_off_track_gt_30pct`, `topic_validity_status`, and `analysis_sample_status` support manual coding and exclusion when the off-topic ratio is greater than 30%.
-- `chat_messages.jsonl`: SENSITIVE RAW CHAT export containing participant and assistant message content plus session-level topic-validity coding fields.
+- `chat_messages.jsonl`: SENSITIVE RAW CHAT export containing participant and assistant message content, session-level topic-validity coding fields, and effective-turn verifier fields (`effective_turn_label`, `effective_turn_source`, `effective_turn_verifier_*`) used to audit completion eligibility.
 - `behavior_events.jsonl`: participant/technical lifecycle events.
 - `audit_logs.csv`: researcher administrator action history.
 - `ai_call_records.csv`: AI provider diagnostics derived from assistant message records.
