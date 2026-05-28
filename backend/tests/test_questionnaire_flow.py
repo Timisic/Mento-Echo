@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.models import AuditLog, ExperimentSession, QuestionnaireResponse, QuestionnaireScore
-from app.questionnaire_config import ITEMS_BY_KEY, get_items
+from app.questionnaire_config import get_items
 from tests.conftest import import_participants
 
 
