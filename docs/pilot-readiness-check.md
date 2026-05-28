@@ -2,7 +2,7 @@
 
 Use this sequence before a researcher pilot. It validates the PostgreSQL-backed
 admin dashboard, reset/exclusion controls, behavior events, audit logs, export
-ZIP, privacy boundary, promptless provider behavior, 10-second dialogue response SLA, mobile chat layout, and end-to-end participant flow.
+ZIP, privacy boundary, length-guarded promptless provider behavior, 10-second dialogue response SLA, mobile chat layout, and end-to-end participant flow.
 
 ## 1. Start PostgreSQL and apply migrations
 
@@ -51,8 +51,9 @@ This targeted suite covers:
   IP export, and no raw chat in `analysis_dataset.csv`;
 - end-to-end flow: import → entry → pre-survey → assignment → chat →
   eligibility → post-survey → dashboard → export;
-- promptless provider behavior: no system prompt, developer instruction, base
-  instruction, or model-side topic guidance is sent for participant dialogue;
+- length-guarded promptless provider behavior: only the neutral length/completeness
+  guard is sent for participant dialogue; no topic guidance, developer instruction,
+  base instruction, persona, or counseling style instruction is sent;
 - Codex-first response behavior: Codex GPT-5.5 is preferred, but the participant
   receives a usable reply within 10 seconds via Codex or configured fallback.
 

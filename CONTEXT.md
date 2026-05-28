@@ -74,6 +74,10 @@ _Avoid_: Global user memory, browser-only memory, cross-participant memory
 An AI dialogue mode where the backend sends no system prompt, developer instruction, base instruction, or model-side topic guidance to the dialogue model provider.
 _Avoid_: Hidden research prompt, topic-steering system prompt, dialog instruction
 
+**Length-Guarded Promptless Dialogue**:
+The current participant-facing AI dialogue mode. The backend may send one neutral length/completeness guard, but no topic guidance, research-condition prompt, persona, counseling style, developer instruction, or base instruction.
+_Avoid_: Provider-specific topic prompt, hidden experimental condition, advice persona
+
 **Dialogue Response SLA**:
 The participant-facing expectation that an assistant reply should become available within 10 seconds, using Codex GPT-5.5 when it can meet that target and falling back to DeepSeek when it cannot.
 _Avoid_: Best-effort model latency, unlimited Codex wait
@@ -124,7 +128,7 @@ _Avoid_: Multi-role staff, coder account
 - The participant-facing experience is blinded to **Group Assignment** labels and assignment source; only the **Researcher Administrator** should see those operational details.
 - A **Pre-survey** must be submitted before the **AI Dialogue** starts.
 - An **AI Dialogue** uses exactly one configured **Dialogue Model Provider** for participant-facing assistant responses.
-- **Promptless Dialogue** means model-side prompts and topic guidance are not sent, even when the study context has a research topic.
+- **Length-Guarded Promptless Dialogue** means only a neutral length/completeness guard is sent; model-side topic guidance is not sent, even when the study context has a research topic.
 - **Dialogue Model Memory** is scoped to exactly one **Experiment Session** and must survive browser refresh or backend restart.
 - The preferred **Dialogue Model Provider** is Codex GPT-5.5 when it can satisfy the **Dialogue Response SLA**; otherwise the platform should fall back to DeepSeek or another faster OpenAI-compatible provider.
 - A **Post-survey** must be submitted after the **AI Dialogue** is complete.
@@ -159,7 +163,7 @@ _Avoid_: Multi-role staff, coder account
 > **Domain expert:** “No. Preserve **Dialogue Model Memory** for the same **Experiment Session** so the provider continues the same conversation after refresh or restart.”
 >
 > **Dev:** “Should the platform send a hidden prompt so the model guides the participant toward the study topic?”
-> **Domain expert:** “No. The current decision is **Promptless Dialogue**: do not send system prompts, developer instructions, base instructions, or model-side topic guidance.”
+> **Domain expert:** “No topic guidance. The current decision is **Length-Guarded Promptless Dialogue**: one neutral length/completeness guard is allowed, but no developer instruction, base instruction, research-condition prompt, persona, counseling style, or model-side topic guidance.”
 >
 > **Dev:** “If Codex GPT-5.5 takes longer than 10 seconds, should we keep waiting because Codex is preferred?”
 > **Domain expert:** “No. Codex GPT-5.5 is preferred only while it can satisfy the **Dialogue Response SLA**; otherwise fall back to DeepSeek so the participant gets a timely reply.”
@@ -172,6 +176,6 @@ _Avoid_: Multi-role staff, coder account
 - “Session” can mean browser session, chat session, or experiment lifecycle. Resolved canonical term: **Experiment Session** for the recoverable research lifecycle.
 - “Codex” can mean a coding agent or the model provider behind participant chat. Resolved MVP usage here: Codex is a **Dialogue Model Provider** for the participant-facing **AI Dialogue**, not researcher-side automation.
 - “Memory” can mean global personalization, browser state, database chat history, or provider-side conversation state. Resolved MVP usage here: **Dialogue Model Memory** is scoped only to one **Experiment Session**.
-- “System prompt” / “dialog instruction” previously implied hidden topic steering. Resolved current rule: **Promptless Dialogue** sends no model-side prompt or topic guidance.
+- “System prompt” / “dialog instruction” previously implied hidden topic steering. Resolved current rule: **Length-Guarded Promptless Dialogue** allows only a neutral length/completeness guard and sends no model-side topic guidance.
 - “Fast Codex” means Codex GPT-5.5 is preferred, not that the participant should wait indefinitely. Resolved current rule: the **Dialogue Response SLA** is 10 seconds, with DeepSeek fallback when Codex cannot meet it.
 - “研究一” was previously documented as a two-group experiment. Current resolved scope: **Study One Pilot** is single-group; grouped prompt-comparison logic belongs to a later study.

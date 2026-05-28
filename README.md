@@ -25,7 +25,8 @@ Mentor Echo 是一个用于研究“AI 对话是否能促进大学生身份发�
 - 前测提交后锁定，不允许被试自行修改。
 - 当前默认 `STUDY_MODE=pilot_single`：研究一预实验暂不展示、不执行实验组/控制组分配，所有被试进入同一套 AI 对话。
 - 后续研究二可切换到 `STUDY_MODE=grouped`，恢复导入/随机分组；如需提示词条件，应作为新的研究协议决策重新确认。
-- 当前 AI 对话为 promptless：后端不向模型发送系统提示词、developer/base instruction 或话题引导。
+- 当前 AI 对话为 `length_guarded_promptless_v1`：后端只发送中性的长度/完整性守卫，
+  不发送话题引导、研究条件提示、角色人设或咨询风格指令。
 - 完成 AI 对话必须同时满足：
   - 至少 6 条被试消息；
   - 至少 10 分钟活跃对话时长。
@@ -82,7 +83,7 @@ export_manifest.json
 - 前端：React + TypeScript + Vite
 - 后端：FastAPI + SQLAlchemy + Alembic + Pydantic Settings
 - 数据库：PostgreSQL
-- AI 调用：后端 provider 边界，优先支持 promptless Codex GPT-5.5；若 30 秒内不能返回，则降级到 DeepSeek/OpenAI-compatible Chat Completions；开发/测试可用 mock
+- AI 调用：后端 provider 边界，优先支持带长度守卫的 Codex GPT-5.5；若 30 秒内不能返回，则降级到 DeepSeek/OpenAI-compatible Chat Completions；开发/测试可用 mock
 
 ## 快速启动
 
@@ -225,7 +226,7 @@ AI_BASE_URL=https://api.openai.com/v1
 AI_MODEL_NAME=gpt-5.5
 AI_API_KEY=
 AI_TEMPERATURE=1
-AI_MAX_TOKENS=2000
+AI_MAX_TOKENS=900
 AI_REASONING_EFFORT=none
 AI_TIMEOUT_SECONDS=45
 
@@ -248,7 +249,7 @@ AI_FALLBACK_TIMEOUT_SECONDS=30
 AI_FALLBACK_MAX_ATTEMPTS=2
 ```
 
-真实模型调用可能产生外部 API 或 Codex 账号费用。API Key 只应保存在本地 `.env` 或部署环境变量中。当前 AI 对话决策是 promptless：后端不应向模型发送系统提示词、developer/base instruction 或话题引导。Codex 模式会把每个 Experiment Session 的 Codex thread id 存入数据库，以便浏览器刷新或后端重启后继续同一段对话。
+真实模型调用可能产生外部 API 或 Codex 账号费用。API Key 只应保存在本地 `.env` 或部署环境变量中。当前 AI 对话决策是 `length_guarded_promptless_v1`：后端只允许一条中性的长度/完整性守卫，不应向模型发送话题引导、研究条件提示、角色人设或咨询风格指令。Codex 模式会把每个 Experiment Session 的 Codex thread id 存入数据库，以便浏览器刷新或后端重启后继续同一段对话。
 
 Codex 原生提速优先路径：当前机器 `codex-cli 0.132.0` 已可用，`~/.codex/config.toml` 默认模型为 `gpt-5.5`，因此 provider 配置应优先使用 `AI_MODEL_NAME=gpt-5.5`。当前每轮直接启动 `codex app-server --disable hooks` 会有冷启动成本；更快的原生路径是使用 Codex app-server daemon + `codex app-server proxy` 复用常驻服务。实测本机 `codex app-server daemon start` 提示缺少 standalone Codex install（需要 Codex installer 管理的 `~/.codex/packages/standalone/current/codex`），所以要启用 daemon/proxy 提速，需要先安装 standalone Codex；在此之前仍应保留 30 秒 SLA 和 DeepSeek 降级。
 
@@ -274,7 +275,7 @@ TRUST_PROXY_HEADERS=false
 
 这些控制会拒绝异常 `Host` 头、过大的请求体、请求突增、AI 对话额度滥用以及重复管理员登录失败，同时默认限额保留正常被试问卷/对话使用空间。若要更接近生产环境，还应在服务器防火墙/安全组中只开放确实需要的前后端端口，避免暴露 PostgreSQL 或其他后台服务；任何曾经粘贴到聊天或日志里的 key 都要轮换；有域名后尽快启用 HTTPS。
 
-OpenAI GPT-5 系列 chat-completions 模型会拒绝旧的 `max_tokens` 参数和非默认 `temperature`。后端会自动把 `AI_MAX_TOKENS` 映射为 `max_completion_tokens`，并对 GPT-5 系列省略非默认 temperature。若使用支持该值的 GPT-5.1+ / 当前 `gpt-5.5` 类模型，建议设置 `AI_REASONING_EFFORT=none`，避免普通聊天把输出额度耗尽在不可见 reasoning tokens 上。
+OpenAI GPT-5 系列 chat-completions 模型会拒绝旧的 `max_tokens` 参数和非默认 `temperature`。后端会自动把 `AI_MAX_TOKENS` 映射为 `max_completion_tokens`，并对 GPT-5 系列省略非默认 temperature。若使用支持该值的 GPT-5.1+ / 当前 `gpt-5.5` 类模型，建议设置 `AI_REASONING_EFFORT=none`，避免普通聊天把输出额度耗尽在不可见 reasoning tokens 上。若 provider 返回 `finish_reason=length`，后端会把该轮视为 provider error，避免把截断回复直接展示给被试。
 
 ## 目录结构
 

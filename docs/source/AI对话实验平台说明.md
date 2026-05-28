@@ -1,6 +1,6 @@
 # 研究一 AI 对话实验平台一页说明
 
-> 当前 MVP 实现决策（2026-05-20）：AI 对话为 promptless。以下早期“主题/流程/系统提示语”内容只作为研究设计背景，不得直接作为系统提示词、developer/base instruction 或模型侧话题引导发送给 provider。
+> 当前 MVP 实现决策：AI 对话为 `length_guarded_promptless_v1`。以下早期“主题/流程/系统提示语”内容只作为研究设计背景；当前只允许中性的长度/完整性守卫，不得直接作为 developer/base instruction、角色人设、咨询风格指令或模型侧话题引导发送给 provider。
 
 ## 2. 实验组流程
 
@@ -77,7 +77,7 @@
 11. 是否完成对话。
 12. 是否跳转后测问卷。
 13. 模型名称和版本。
-14. prompt mode（当前 MVP 为 promptless，不记录系统提示语版本）。
+14. prompt mode（当前 MVP 为 `length_guarded_promptless_v1`，记录中性长度守卫版本）。
 
 后续文本分析可基于完整对话记录编码：
 

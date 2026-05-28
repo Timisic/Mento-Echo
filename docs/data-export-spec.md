@@ -32,7 +32,7 @@ Human-readable export description:
 - export timestamp;
 - questionnaire version;
 - AI provider/model configuration snapshot;
-- prompt mode (`promptless` for the current MVP);
+- prompt mode (`length_guarded_promptless_v1` for the current MVP);
 - AI response SLA and fallback rule: prefer Codex GPT-5.5 within 10 seconds, otherwise fall back to DeepSeek/OpenAI-compatible provider;
 - completion rule: 6 participant turns + 10 active minutes;
 - group assignment rules;
@@ -171,7 +171,7 @@ Suggested fields:
 - `created_at`
 - `provider_name` for assistant messages
 - `model_name` for assistant messages
-- `prompt_mode` for assistant messages (`promptless` in the current MVP)
+- `prompt_mode` for assistant messages (`length_guarded_promptless_v1` in the current MVP)
 - `generation_params` for assistant messages
 - `fallback_from_provider` / `fallback_reason` when a fallback provider was used
 

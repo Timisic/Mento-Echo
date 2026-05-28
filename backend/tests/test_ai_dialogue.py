@@ -5,7 +5,8 @@ from datetime import timedelta
 import pytest
 
 from app.ai_provider import (
-    PROMPTLESS_DIALOGUE_MODE,
+    LENGTH_GUARD_SYSTEM_PROMPT,
+    LENGTH_GUARDED_PROMPTLESS_MODE,
     AIProviderError,
     AIProviderResult,
     CodexAppServerProvider,
@@ -35,11 +36,11 @@ def prepared_session(client, admin_headers, code="DIALOGUE", group="experiment")
 
 def test_ai_provider_boundary_mock_and_missing_key_behavior():
     pilot_prompt = prompt_for_group("pilot")
-    assert pilot_prompt.version == PROMPTLESS_DIALOGUE_MODE
-    assert pilot_prompt.system_prompt == ""
+    assert pilot_prompt.version == LENGTH_GUARDED_PROMPTLESS_MODE
+    assert pilot_prompt.system_prompt == LENGTH_GUARD_SYSTEM_PROMPT
     experiment_prompt = prompt_for_group("experiment")
-    assert experiment_prompt.version == PROMPTLESS_DIALOGUE_MODE
-    assert experiment_prompt.system_prompt == ""
+    assert experiment_prompt.version == LENGTH_GUARDED_PROMPTLESS_MODE
+    assert experiment_prompt.system_prompt == LENGTH_GUARD_SYSTEM_PROMPT
 
     mock = OpenAICompatibleProvider(Settings(AI_PROVIDER_NAME="mock", AI_MODEL_NAME="mock-model"))
     result = mock.generate(system_prompt="", messages=[{"role": "user", "content": "hello"}])
@@ -57,18 +58,18 @@ def test_ai_provider_boundary_mock_and_missing_key_behavior():
     assert "key" in exc.value.message.lower()
 
 
-def test_dialogue_prompt_config_is_promptless_for_all_dialogue_providers():
+def test_dialogue_prompt_config_uses_length_guard_for_all_dialogue_providers():
     for settings in (
         Settings(AI_PROVIDER_NAME="deepseek", AI_MODEL_NAME="deepseek-v4-pro"),
         Settings(AI_PROVIDER_NAME="openai", AI_MODEL_NAME="gpt-5.5"),
         Settings(AI_PROVIDER_NAME="mock"),
     ):
         prompt = DialogueService._dialogue_prompt_config(settings)
-        assert prompt.version == PROMPTLESS_DIALOGUE_MODE
-        assert prompt.system_prompt == ""
+        assert prompt.version == LENGTH_GUARDED_PROMPTLESS_MODE
+        assert prompt.system_prompt == LENGTH_GUARD_SYSTEM_PROMPT
 
 
-def test_dialogue_keeps_deepseek_promptless_and_records_promptless_mode(
+def test_dialogue_sends_deepseek_length_guard_and_records_guard_mode(
     client, admin_headers, db_session, monkeypatch
 ):
     captured: dict[str, object] = {}
@@ -106,7 +107,7 @@ def test_dialogue_keeps_deepseek_promptless_and_records_promptless_mode(
     )
 
     assert response.status_code == 200, response.text
-    assert captured["system_prompt"] == ""
+    assert captured["system_prompt"] == LENGTH_GUARD_SYSTEM_PROMPT
     assert captured["messages"][-1]["content"] == "我是心理学专业，想转人工智能。"
     db_session.expire_all()
     messages = (
@@ -115,11 +116,11 @@ def test_dialogue_keeps_deepseek_promptless_and_records_promptless_mode(
         .order_by(ChatMessage.message_index)
         .all()
     )
-    assert messages[1].system_prompt_version is None
-    assert messages[1].generation_params["prompt_mode"] == PROMPTLESS_DIALOGUE_MODE
+    assert messages[1].system_prompt_version == LENGTH_GUARDED_PROMPTLESS_MODE
+    assert messages[1].generation_params["prompt_mode"] == LENGTH_GUARDED_PROMPTLESS_MODE
 
 
-def test_dialogue_keeps_openai_promptless_and_records_promptless_mode(
+def test_dialogue_sends_openai_length_guard_and_records_guard_mode(
     client, admin_headers, db_session, monkeypatch
 ):
     captured: dict[str, object] = {}
@@ -132,7 +133,7 @@ def test_dialogue_keeps_openai_promptless_and_records_promptless_mode(
                 content="可以先用一个学期试探AI方向：补编程和机器学习基础，同时保留心理学交叉优势。",
                 provider_name="openai",
                 model_name="gpt-5.5",
-                generation_params={"max_completion_tokens": 2000},
+                generation_params={"max_completion_tokens": 900},
                 request_started_at=timestamp,
                 response_completed_at=timestamp,
                 duration_ms=1,
@@ -145,7 +146,7 @@ def test_dialogue_keeps_openai_promptless_and_records_promptless_mode(
             AI_PROVIDER_NAME="openai",
             AI_MODEL_NAME="gpt-5.5",
             AI_API_KEY="test-key",
-            AI_MAX_TOKENS=2000,
+            AI_MAX_TOKENS=900,
             AI_REASONING_EFFORT="none",
             AI_FALLBACK_ENABLED=False,
         ),
@@ -158,7 +159,7 @@ def test_dialogue_keeps_openai_promptless_and_records_promptless_mode(
     )
 
     assert response.status_code == 200, response.text
-    assert captured["system_prompt"] == ""
+    assert captured["system_prompt"] == LENGTH_GUARD_SYSTEM_PROMPT
     db_session.expire_all()
     messages = (
         db_session.query(ChatMessage)
@@ -166,9 +167,9 @@ def test_dialogue_keeps_openai_promptless_and_records_promptless_mode(
         .order_by(ChatMessage.message_index)
         .all()
     )
-    assert messages[1].system_prompt_version is None
-    assert messages[1].generation_params["prompt_mode"] == PROMPTLESS_DIALOGUE_MODE
-    assert messages[1].generation_params["max_completion_tokens"] == 2000
+    assert messages[1].system_prompt_version == LENGTH_GUARDED_PROMPTLESS_MODE
+    assert messages[1].generation_params["prompt_mode"] == LENGTH_GUARDED_PROMPTLESS_MODE
+    assert messages[1].generation_params["max_completion_tokens"] == 900
 
 
 def test_dialogue_initial_suggestion_from_grade_major_is_not_effective_turn(
@@ -378,6 +379,47 @@ def test_openai_compatible_payload_omits_system_message_when_promptless(monkeypa
     }
 
 
+def test_openai_compatible_payload_includes_only_length_guard_system_message(monkeypatch):
+    import json
+    import urllib.request
+
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}'
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    provider = OpenAICompatibleProvider(
+        Settings(
+            AI_PROVIDER_NAME="deepseek",
+            AI_BASE_URL="https://api.deepseek.com/v1",
+            AI_MODEL_NAME="deepseek-chat",
+            AI_API_KEY="test-key",
+        )
+    )
+
+    result = provider.generate(
+        system_prompt=LENGTH_GUARD_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": "hello"}],
+    )
+
+    assert result.content == "ok"
+    assert captured["payload"]["messages"] == [
+        {"role": "system", "content": LENGTH_GUARD_SYSTEM_PROMPT},
+        {"role": "user", "content": "hello"},
+    ]
+
 
 def test_openai_gpt5_payload_uses_supported_token_and_temperature_params(monkeypatch):
     import json
@@ -530,6 +572,39 @@ def test_openai_compatible_empty_content_is_provider_error(monkeypatch):
     assert "finish_reason=length" in exc.value.message
 
 
+def test_openai_compatible_length_finish_reason_is_provider_error(monkeypatch):
+    import urllib.request
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"choices":[{"finish_reason":"length","message":{"content":"partial answer"}}]}'
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout: FakeResponse())
+    provider = OpenAICompatibleProvider(
+        Settings(
+            AI_PROVIDER_NAME="deepseek",
+            AI_BASE_URL="https://api.deepseek.com",
+            AI_MODEL_NAME="deepseek-v4-pro",
+            AI_API_KEY="test-key",
+        )
+    )
+
+    with pytest.raises(AIProviderError) as exc:
+        provider.generate(
+            system_prompt=LENGTH_GUARD_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": "hello"}],
+        )
+
+    assert exc.value.code == "provider_error"
+    assert "length budget" in exc.value.message
+
+
 def test_openai_compatible_read_timeout_is_ai_provider_error(monkeypatch):
     import urllib.request
 
@@ -578,7 +653,7 @@ def test_dialogue_blocked_before_pre_survey(client, admin_headers):
     }
 
 
-def test_promptless_message_persistence_and_metadata(client, admin_headers, db_session):
+def test_length_guarded_message_persistence_and_metadata(client, admin_headers, db_session):
     session_id = prepared_session(client, admin_headers, group="experiment")
 
     state = client.get(f"/api/participant/sessions/{session_id}/dialogue")
@@ -606,8 +681,8 @@ def test_promptless_message_persistence_and_metadata(client, admin_headers, db_s
     assert [message.role for message in messages] == ["participant", "assistant"]
     assert messages[1].provider_name == "mock"
     assert messages[1].model_name == "mock-mentor-echo"
-    assert messages[1].system_prompt_version is None
-    assert messages[1].generation_params["prompt_mode"] == PROMPTLESS_DIALOGUE_MODE
+    assert messages[1].system_prompt_version == LENGTH_GUARDED_PROMPTLESS_MODE
+    assert messages[1].generation_params["prompt_mode"] == LENGTH_GUARDED_PROMPTLESS_MODE
     assert messages[1].generation_params["temperature"] == 0.3
 
 
@@ -616,7 +691,7 @@ def test_dialogue_provider_thread_id_is_reused_for_session(client, admin_headers
 
     class FakeProvider:
         def generate(self, *, system_prompt, messages, provider_thread_id=None):
-            assert system_prompt == ""
+            assert system_prompt == LENGTH_GUARD_SYSTEM_PROMPT
             from app.ai_provider import AIProviderResult
             from app.services import now_utc
 
@@ -658,7 +733,7 @@ def test_dialogue_provider_thread_id_is_reused_for_session(client, admin_headers
 def test_dialogue_falls_back_without_exposing_provider_to_participant(client, admin_headers, db_session, monkeypatch):
     class PrimaryProvider:
         def generate(self, *, system_prompt, messages, provider_thread_id=None):
-            assert system_prompt == ""
+            assert system_prompt == LENGTH_GUARD_SYSTEM_PROMPT
             raise AIProviderError("codex_timeout", "primary timed out")
 
     class FallbackProvider:
@@ -666,7 +741,7 @@ def test_dialogue_falls_back_without_exposing_provider_to_participant(client, ad
             self.settings = settings
 
         def generate(self, *, system_prompt, messages, provider_thread_id=None):
-            assert system_prompt == ""
+            assert system_prompt == LENGTH_GUARD_SYSTEM_PROMPT
             from app.ai_provider import AIProviderResult
             from app.services import now_utc
 
@@ -719,8 +794,8 @@ def test_dialogue_falls_back_without_exposing_provider_to_participant(client, ad
     assert messages[1].content == "fallback response"
     assert messages[1].provider_name == "deepseek"
     assert messages[1].model_name == "deepseek-v4-pro"
-    assert messages[1].system_prompt_version is None
-    assert messages[1].generation_params["prompt_mode"] == PROMPTLESS_DIALOGUE_MODE
+    assert messages[1].system_prompt_version == LENGTH_GUARDED_PROMPTLESS_MODE
+    assert messages[1].generation_params["prompt_mode"] == LENGTH_GUARDED_PROMPTLESS_MODE
     assert messages[1].generation_params["fallback_triggered"] is True
     assert messages[1].generation_params["primary_error_code"] == "codex_timeout"
     assert messages[1].generation_params["fallback_from_provider"] == "codex"

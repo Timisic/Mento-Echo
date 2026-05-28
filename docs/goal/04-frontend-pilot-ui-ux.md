@@ -318,7 +318,7 @@ App
 - [ ] Questionnaire UI uses clickable scale controls, categorical buttons/cards, grouping/pagination, progress, required-item validation, and submit-locking feedback.
 - [ ] Questionnaire UI renders backend-provided content for `mentor_echo_questionnaire_v2026_05_15_major_umics_only` without changing wording or scoring assumptions.
 - [ ] AI dialogue UI shows 10-message + 15-minute completion progress and explains blocked/eligible states in Chinese.
-- [ ] Dialogue provider calls are promptless: no system prompt, developer instruction, base instruction, or model-side topic guidance.
+- [ ] Dialogue provider calls are length-guarded promptless: only the neutral length/completeness guard is sent; no developer instruction, base instruction, persona, counseling style instruction, or model-side topic guidance is sent.
 - [ ] Codex GPT-5.5 is preferred, but a participant-facing reply must be available within 10 seconds via Codex or fallback provider.
 - [ ] Mobile chat is phone-first single-screen at 375×667 and 390×844: no horizontal scrolling, no sideways drag, message text wraps, and the input remains reachable.
 - [ ] Desktop chat also has no horizontal page/chat overflow.

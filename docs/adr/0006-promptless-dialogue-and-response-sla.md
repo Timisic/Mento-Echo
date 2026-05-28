@@ -1,13 +1,13 @@
-# Prefer promptless Codex GPT-5.5 dialogue within a 10-second response SLA
+# Prefer length-guarded promptless Codex GPT-5.5 dialogue within a 10-second response SLA
 
-The participant-facing AI dialogue should not use hidden system prompts, developer instructions, base instructions, or model-side topic guidance. Codex GPT-5.5 is the preferred dialogue model provider when it can return a usable assistant reply within 10 seconds; if it cannot, the platform should degrade to DeepSeek or another faster OpenAI-compatible provider rather than making the participant wait.
+The participant-facing AI dialogue should not use hidden topic prompts, developer instructions, base instructions, personas, counseling style instructions, or model-side topic guidance. One neutral length/completeness guard is allowed to prevent overly long or abruptly truncated participant-facing replies. Codex GPT-5.5 is the preferred dialogue model provider when it can return a usable assistant reply within 10 seconds; if it cannot, the platform should degrade to DeepSeek or another faster OpenAI-compatible provider rather than making the participant wait.
 
 ## Considered Options
 
 - Keep research-topic system prompts and prompt versions for reproducibility.
 - Use Codex only, even when latency exceeds the participant-facing SLA.
-- Use promptless dialogue with Codex-first routing and bounded DeepSeek fallback.
+- Use length-guarded promptless dialogue with Codex-first routing and bounded DeepSeek fallback.
 
 ## Consequences
 
-This makes the AI dialogue less experimentally steered by hidden instructions, so future analysis should treat the model conversation as promptless provider output rather than a controlled prompt-condition intervention. Implementation should remove model-side prompt fields from provider calls and use stored provider/model/timing metadata, not prompt versions, for technical reproducibility.
+This keeps the AI dialogue free of hidden topic steering while protecting participants from very long replies. Future analysis should treat the model conversation as `length_guarded_promptless_v1` provider output rather than a controlled prompt-condition intervention. Implementation should record the length guard prompt mode and provider/model/timing metadata for technical reproducibility.

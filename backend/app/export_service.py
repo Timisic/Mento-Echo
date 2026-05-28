@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai_provider import PROMPTLESS_DIALOGUE_MODE
+from app.ai_provider import LENGTH_GUARDED_PROMPTLESS_MODE
 from app.config import get_settings
 from app.models import (
     AuditLog,
@@ -357,7 +357,9 @@ def _chat_message_rows(db: Session) -> list[dict[str, Any]]:
                 "created_at": message.created_at,
                 "provider_name": message.provider_name,
                 "model_name": message.model_name,
-                "prompt_mode": (message.generation_params or {}).get("prompt_mode", PROMPTLESS_DIALOGUE_MODE),
+                "prompt_mode": (message.generation_params or {}).get(
+                    "prompt_mode", LENGTH_GUARDED_PROMPTLESS_MODE
+                ),
                 "generation_params": message.generation_params,
                 "effective_turn_label": message.effective_turn_label,
                 "effective_turn_source": message.effective_turn_source,
@@ -417,7 +419,9 @@ def _ai_call_rows(db: Session) -> list[dict[str, Any]]:
             "participant_code": message.participant_code,
             "provider_name": message.provider_name,
             "model_name": message.model_name,
-            "prompt_mode": (message.generation_params or {}).get("prompt_mode", PROMPTLESS_DIALOGUE_MODE),
+            "prompt_mode": (message.generation_params or {}).get(
+                "prompt_mode", LENGTH_GUARDED_PROMPTLESS_MODE
+            ),
             "fallback_from_provider": (message.generation_params or {}).get("fallback_from_provider"),
             "fallback_reason": (message.generation_params or {}).get("fallback_reason"),
             "request_started_at": message.request_started_at,
@@ -453,7 +457,7 @@ must not become a competing source of truth.
 - AI model: `{settings.ai_model_name}`
 - Study mode: `{settings.study_mode}`
 - Generation parameters: temperature `{settings.ai_temperature}`, max tokens `{settings.ai_max_tokens}`
-- Prompt mode: `{PROMPTLESS_DIALOGUE_MODE}`
+- Prompt mode: `{LENGTH_GUARDED_PROMPTLESS_MODE}`
 - Response SLA: `{settings.ai_response_sla_seconds}` seconds
 - Fallback provider: `{settings.ai_fallback_provider_name}` when enabled and available
 - Completion rule: 6 participant turns + 10 active dialogue minutes

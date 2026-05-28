@@ -11,7 +11,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.ai_provider import (
-    PROMPTLESS_DIALOGUE_MODE,
+    LENGTH_GUARD_SYSTEM_PROMPT,
+    LENGTH_GUARDED_PROMPTLESS_MODE,
     AIProviderError,
     AIProviderResult,
     PromptConfig,
@@ -1110,7 +1111,9 @@ class DialogueService:
             metadata={
                 "provider_name": message.provider_name,
                 "model_name": message.model_name,
-                "prompt_mode": (message.generation_params or {}).get("prompt_mode", PROMPTLESS_DIALOGUE_MODE),
+                "prompt_mode": (message.generation_params or {}).get(
+                    "prompt_mode", LENGTH_GUARDED_PROMPTLESS_MODE
+                ),
                 "retry_count": 0,
                 "error_code": message.error_code,
                 "error_message_sanitized": message.error_message_sanitized,
@@ -1119,7 +1122,7 @@ class DialogueService:
 
     @staticmethod
     def _dialogue_prompt_config(settings: Settings) -> PromptConfig:
-        return PromptConfig(PROMPTLESS_DIALOGUE_MODE, "")
+        return PromptConfig(LENGTH_GUARDED_PROMPTLESS_MODE, LENGTH_GUARD_SYSTEM_PROMPT)
 
     @staticmethod
     def initial_message_suggestion(db: Session, *, session: ExperimentSession) -> str | None:

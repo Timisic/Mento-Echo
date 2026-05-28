@@ -171,7 +171,7 @@ MVP provider requirements:
 - Keep a backend `AIProvider` boundary so the model/provider can be replaced later.
 - Do not hard-code the selected model name in business logic.
 - For Codex mode, persist the provider thread id on the Experiment Session and reuse it for all participant turns in that session.
-- Do not send system prompts, developer instructions, base instructions, or model-side topic guidance to any dialogue model provider.
+- Send only the neutral length/completeness guard to dialogue model providers; do not send topic guidance, research-condition prompts, personas, counseling style instructions, developer instructions, or base instructions.
 
 Every AI response record should preserve enough metadata for reproducibility:
 
@@ -181,7 +181,7 @@ Every AI response record should preserve enough metadata for reproducibility:
 | `base_url` or provider config key | Identifies the OpenAI-compatible endpoint without exposing secrets. |
 | `model_name` | Configured model. |
 | `model_version` or config snapshot | Version if available. |
-| `prompt_mode` | `promptless` for the current MVP; retained as a data label rather than a hidden prompt version. |
+| `prompt_mode` | `length_guarded_promptless_v1` for the current MVP; retained as an auditable dialogue-mode label. |
 | `generation_params` | Temperature, max tokens, top_p, etc. |
 | `request_started_at` / `response_completed_at` | Timing diagnostics. |
 | `retry_count` | Stability diagnostics. |
@@ -192,7 +192,7 @@ Every AI response record should preserve enough metadata for reproducibility:
 
 ### Study One Pilot condition
 
-The Study One Pilot uses a promptless AI dialogue for all participants. The backend must send only the participant-visible conversation history and the latest participant message to the dialogue model provider; it must not add hidden topic framing, system prompts, developer instructions, base instructions, or prompt-condition text.
+The Study One Pilot uses `length_guarded_promptless_v1` AI dialogue for all participants. The backend sends participant-visible conversation history, the latest participant message, and one neutral length/completeness guard to the dialogue model provider; it must not add hidden topic framing, research-condition prompts, personas, counseling style instructions, developer instructions, base instructions, or prompt-condition text.
 
 ### Future experiment/control groups
 

@@ -14,6 +14,10 @@ from typing import Any
 from app.config import Settings
 
 PROMPTLESS_DIALOGUE_MODE = "promptless"
+LENGTH_GUARDED_PROMPTLESS_MODE = "length_guarded_promptless_v1"
+LENGTH_GUARD_SYSTEM_PROMPT = (
+    "请用简体中文回复。回复控制在约300-500个中文字符内，保持完整收束，不要在句中中断。"
+)
 
 
 @dataclass(frozen=True)
@@ -47,7 +51,7 @@ class AIProviderError(RuntimeError):
 
 def prompt_for_group(group: str) -> PromptConfig:
     if group in {"pilot", "experiment", "control"}:
-        return PromptConfig(PROMPTLESS_DIALOGUE_MODE, "")
+        return PromptConfig(LENGTH_GUARDED_PROMPTLESS_MODE, LENGTH_GUARD_SYSTEM_PROMPT)
     raise ValueError(f"Unknown group: {group}")
 
 
@@ -112,7 +116,17 @@ class OpenAICompatibleProvider:
         except (urllib.error.URLError, OSError, KeyError, IndexError, json.JSONDecodeError) as exc:
             raise AIProviderError("provider_error", sanitize_error_message(str(exc))) from exc
         if not str(content or "").strip():
-            raise AIProviderError("provider_error", sanitize_error_message(f"AI provider returned empty content; finish_reason={finish_reason}"))
+            raise AIProviderError(
+                "provider_error",
+                sanitize_error_message(
+                    f"AI provider returned empty content; finish_reason={finish_reason}"
+                ),
+            )
+        if finish_reason == "length":
+            raise AIProviderError(
+                "provider_error",
+                "AI provider response hit the configured length budget before finishing",
+            )
         completed = datetime.now(UTC)
         generation_params = dict(params)
         if "thinking" in payload:
