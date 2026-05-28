@@ -33,14 +33,34 @@ def ensure_test_database(database_url: str) -> None:
 
 
 ensure_test_database(TEST_DATABASE_URL)
-os.environ["DATABASE_URL"] = TEST_DATABASE_URL
-os.environ.setdefault("ADMIN_USERNAME", "researcher")
-os.environ.setdefault("ADMIN_PASSWORD", "test-admin-password")
-os.environ.setdefault("ADMIN_TOKEN", "test-admin-token")
-os.environ.setdefault("AI_PROVIDER_NAME", "mock")
-os.environ.setdefault("AI_MODEL_NAME", "mock-mentor-echo")
-os.environ.setdefault("ALLOWED_HOSTS", "*")
-os.environ.setdefault("RATE_LIMIT_ENABLED", "true")
+TEST_ENV_OVERRIDES = {
+    "DATABASE_URL": TEST_DATABASE_URL,
+    "ADMIN_USERNAME": "researcher",
+    "ADMIN_PASSWORD": "test-admin-password",
+    "ADMIN_TOKEN": "test-admin-token",
+    "AI_PROVIDER_NAME": "mock",
+    "AI_BASE_URL": "https://api.openai.com/v1",
+    "AI_API_KEY": "test-ai-api-key",
+    "AI_MODEL_NAME": "mock-mentor-echo",
+    "AI_TEMPERATURE": "0.3",
+    "AI_MAX_TOKENS": "600",
+    "AI_REASONING_EFFORT": "",
+    "AI_TIMEOUT_SECONDS": "10",
+    "AI_RESPONSE_SLA_SECONDS": "30",
+    "AI_FALLBACK_ENABLED": "false",
+    "AI_FALLBACK_PROVIDER_NAME": "deepseek",
+    "AI_FALLBACK_BASE_URL": "https://api.deepseek.com",
+    "AI_FALLBACK_API_KEY": "test-fallback-api-key",
+    "AI_FALLBACK_MODEL_NAME": "deepseek-v4-pro",
+    "AI_FALLBACK_TEMPERATURE": "0.3",
+    "AI_FALLBACK_MAX_TOKENS": "500",
+    "AI_FALLBACK_TIMEOUT_SECONDS": "30",
+    "AI_FALLBACK_MAX_ATTEMPTS": "2",
+    "ALLOWED_HOSTS": "*",
+    "RATE_LIMIT_ENABLED": "true",
+}
+for key, value in TEST_ENV_OVERRIDES.items():
+    os.environ[key] = value
 
 from app.config import get_settings  # noqa: E402
 from app.db import get_engine, reset_engine  # noqa: E402

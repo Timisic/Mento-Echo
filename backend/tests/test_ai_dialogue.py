@@ -57,26 +57,20 @@ def test_ai_provider_boundary_mock_and_missing_key_behavior():
     assert "key" in exc.value.message.lower()
 
 
-def test_dialogue_prompt_config_uses_provider_specific_length_guidance():
-    deepseek_prompt = DialogueService._dialogue_prompt_config(
-        Settings(AI_PROVIDER_NAME="deepseek", AI_MODEL_NAME="deepseek-v4-pro")
-    )
-    assert deepseek_prompt.version == "deepseek_200_char_limit_v1"
-    assert "严格不超过200字" in deepseek_prompt.system_prompt
-
-    openai_prompt = DialogueService._dialogue_prompt_config(
-        Settings(AI_PROVIDER_NAME="openai", AI_MODEL_NAME="gpt-5.5")
-    )
-    assert openai_prompt.version == "openai_500_char_guidance_v1"
-    assert "约500个中文汉字" in openai_prompt.system_prompt
-    assert "不要写到一半停下" in openai_prompt.system_prompt
-
-    mock_prompt = DialogueService._dialogue_prompt_config(Settings(AI_PROVIDER_NAME="mock"))
-    assert mock_prompt.version == PROMPTLESS_DIALOGUE_MODE
-    assert mock_prompt.system_prompt == ""
+def test_dialogue_prompt_config_is_promptless_for_all_dialogue_providers():
+    for settings in (
+        Settings(AI_PROVIDER_NAME="deepseek", AI_MODEL_NAME="deepseek-v4-pro"),
+        Settings(AI_PROVIDER_NAME="openai", AI_MODEL_NAME="gpt-5.5"),
+        Settings(AI_PROVIDER_NAME="mock"),
+    ):
+        prompt = DialogueService._dialogue_prompt_config(settings)
+        assert prompt.version == PROMPTLESS_DIALOGUE_MODE
+        assert prompt.system_prompt == ""
 
 
-def test_dialogue_injects_deepseek_prompt_and_records_version(client, admin_headers, db_session, monkeypatch):
+def test_dialogue_keeps_deepseek_promptless_and_records_promptless_mode(
+    client, admin_headers, db_session, monkeypatch
+):
     captured: dict[str, object] = {}
 
     class FakeProvider:
@@ -112,7 +106,7 @@ def test_dialogue_injects_deepseek_prompt_and_records_version(client, admin_head
     )
 
     assert response.status_code == 200, response.text
-    assert "严格不超过200字" in str(captured["system_prompt"])
+    assert captured["system_prompt"] == ""
     assert captured["messages"][-1]["content"] == "我是心理学专业，想转人工智能。"
     db_session.expire_all()
     messages = (
@@ -121,11 +115,11 @@ def test_dialogue_injects_deepseek_prompt_and_records_version(client, admin_head
         .order_by(ChatMessage.message_index)
         .all()
     )
-    assert messages[1].system_prompt_version == "deepseek_200_char_limit_v1"
-    assert messages[1].generation_params["prompt_mode"] == "deepseek_200_char_limit_v1"
+    assert messages[1].system_prompt_version is None
+    assert messages[1].generation_params["prompt_mode"] == PROMPTLESS_DIALOGUE_MODE
 
 
-def test_dialogue_injects_openai_500_char_prompt_and_records_version(
+def test_dialogue_keeps_openai_promptless_and_records_promptless_mode(
     client, admin_headers, db_session, monkeypatch
 ):
     captured: dict[str, object] = {}
@@ -164,7 +158,7 @@ def test_dialogue_injects_openai_500_char_prompt_and_records_version(
     )
 
     assert response.status_code == 200, response.text
-    assert "约500个中文汉字" in str(captured["system_prompt"])
+    assert captured["system_prompt"] == ""
     db_session.expire_all()
     messages = (
         db_session.query(ChatMessage)
@@ -172,8 +166,8 @@ def test_dialogue_injects_openai_500_char_prompt_and_records_version(
         .order_by(ChatMessage.message_index)
         .all()
     )
-    assert messages[1].system_prompt_version == "openai_500_char_guidance_v1"
-    assert messages[1].generation_params["prompt_mode"] == "openai_500_char_guidance_v1"
+    assert messages[1].system_prompt_version is None
+    assert messages[1].generation_params["prompt_mode"] == PROMPTLESS_DIALOGUE_MODE
     assert messages[1].generation_params["max_completion_tokens"] == 2000
 
 
@@ -672,7 +666,7 @@ def test_dialogue_falls_back_without_exposing_provider_to_participant(client, ad
             self.settings = settings
 
         def generate(self, *, system_prompt, messages, provider_thread_id=None):
-            assert "严格不超过200字" in system_prompt
+            assert system_prompt == ""
             from app.ai_provider import AIProviderResult
             from app.services import now_utc
 
@@ -725,8 +719,8 @@ def test_dialogue_falls_back_without_exposing_provider_to_participant(client, ad
     assert messages[1].content == "fallback response"
     assert messages[1].provider_name == "deepseek"
     assert messages[1].model_name == "deepseek-v4-pro"
-    assert messages[1].system_prompt_version == "deepseek_200_char_limit_v1"
-    assert messages[1].generation_params["prompt_mode"] == "deepseek_200_char_limit_v1"
+    assert messages[1].system_prompt_version is None
+    assert messages[1].generation_params["prompt_mode"] == PROMPTLESS_DIALOGUE_MODE
     assert messages[1].generation_params["fallback_triggered"] is True
     assert messages[1].generation_params["primary_error_code"] == "codex_timeout"
     assert messages[1].generation_params["fallback_from_provider"] == "codex"

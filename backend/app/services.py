@@ -41,15 +41,6 @@ from app.schemas import SessionResponse, StatusRow
 VALID_GROUPS = {"pilot", "experiment", "control"}
 GROUPED_STUDY_GROUPS = {"experiment", "control"}
 SELF_CODE_SUFFIX_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-DEEPSEEK_200_CHAR_DIALOGUE_MODE = "deepseek_200_char_limit_v1"
-DEEPSEEK_200_CHAR_SYSTEM_PROMPT = (
-    "请用简体中文回答，严格不超过200字。最多一段，不列长清单。保持中立、简洁。"
-)
-OPENAI_500_CHAR_DIALOGUE_MODE = "openai_500_char_guidance_v1"
-OPENAI_500_CHAR_SYSTEM_PROMPT = (
-    "请用简体中文回答。总体控制在约500个中文汉字左右；如果问题复杂，可以略多但要优先完整收束，"
-    "不要写到一半停下。避免过长清单，不需要覆盖所有角度；保持中立、具体、支持性。"
-)
 EFFECTIVE_TURN_VERIFIER_PROMPT_VERSION = "effective_turn_verifier_v1"
 EFFECTIVE_TURN_VERIFIER_SYSTEM_PROMPT = """你是实验平台的“有效用户回合”判定器，只输出 0、1 或 9。
 
@@ -1128,11 +1119,6 @@ class DialogueService:
 
     @staticmethod
     def _dialogue_prompt_config(settings: Settings) -> PromptConfig:
-        provider_name = settings.ai_provider_name.strip().lower()
-        if provider_name == "deepseek":
-            return PromptConfig(DEEPSEEK_200_CHAR_DIALOGUE_MODE, DEEPSEEK_200_CHAR_SYSTEM_PROMPT)
-        if provider_name == "openai":
-            return PromptConfig(OPENAI_500_CHAR_DIALOGUE_MODE, OPENAI_500_CHAR_SYSTEM_PROMPT)
         return PromptConfig(PROMPTLESS_DIALOGUE_MODE, "")
 
     @staticmethod
