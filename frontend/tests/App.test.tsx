@@ -286,7 +286,7 @@ describe('Mentor Echo 前端 UI', () => {
     render(<App />);
 
     expect(screen.getByRole('heading', { name: 'Mentor Echo AI 对话实验平台' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: '被试群二维码' })).toHaveAttribute('src', '/participant-group-qr.svg');
+    expect(screen.getByRole('img', { name: '被试群二维码' })).toHaveAttribute('src', '/participant-group-qr.png');
     expect(screen.getByText('这是本实验被试群。请扫码加入，用于接收实验通知、后续安排和被试费发放提醒。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '我是被试，进入实验' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '我是研究者，进入管理后台' })).toBeInTheDocument();

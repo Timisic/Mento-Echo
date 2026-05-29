@@ -37,7 +37,7 @@ type ParticipantStep =
   | 'complete'
   | 'blocked';
 
-const PARTICIPANT_GROUP_QR_SRC = '/participant-group-qr.svg';
+const PARTICIPANT_GROUP_QR_SRC = '/participant-group-qr.png';
 const PARTICIPANT_INFO_FORM_URL = 'https://www.wjx.top/vm/OAZxGku.aspx#';
 
 const statusLabels: Record<string, string> = {
