@@ -477,6 +477,41 @@ describe('Mentor Echo 前端 UI', () => {
     expect(container.querySelector('.topic-banner')).toBeNull();
   });
 
+  it('对话时长显示以后端返回的活跃时长为准，不用本地计时器提前达标', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const activeSession = {
+      ...session,
+      status: 'chat_in_progress',
+      group: 'pilot',
+      assignment_source: 'pilot_single',
+      assignment_locked: true
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input).replace(baseUrl, '');
+      if (url === '/api/health') return jsonResponse({ app: 'ok', database: { ok: true } });
+      if (url === '/api/participant/entry') return jsonResponse({ accepted: true, message: 'ok', session: activeSession });
+      if (url === '/api/participant/sessions/session-1/dialogue') return jsonResponse(dialogueState);
+      return Promise.reject(new Error(`Unexpected request ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '我是被试，进入实验' }));
+    fireEvent.change(screen.getByLabelText('被试编号'), { target: { value: 'PILOT001' } });
+    fireEvent.click(screen.getByRole('button', { name: '进入实验' }));
+
+    expect(await screen.findByText('对话时长：04:21 / 10:00')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(29_000);
+    });
+
+    expect(screen.getByText('对话时长：04:21 / 10:00')).toBeInTheDocument();
+    expect(screen.queryByText('对话时长：04:50 / 10:00')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '暂不能进入后测' })).toBeDisabled();
+  });
+
   it('未知服务端错误不会把内部实现文本显示给被试', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input).replace(baseUrl, '');

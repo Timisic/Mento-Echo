@@ -1040,17 +1040,8 @@ function DialoguePage({
   onBack: () => void;
 }) {
   const progress = dialogue.progress;
-  const [elapsedSeconds, setElapsedSeconds] = useState(progress.dialogue_elapsed_seconds);
   const [visibleReminder, setVisibleReminder] = useState<string | null>(null);
   const shownReminderKeys = useRef<string[]>([]);
-
-  useEffect(() => {
-    setElapsedSeconds(progress.dialogue_elapsed_seconds);
-    const timer = window.setInterval(() => {
-      setElapsedSeconds((seconds) => seconds + 1);
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [progress.dialogue_elapsed_seconds]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1084,7 +1075,7 @@ function DialoguePage({
     return () => window.clearTimeout(timer);
   }, [progress.reminder_text, reminderKey]);
 
-  const elapsed = formatDuration(elapsedSeconds);
+  const elapsed = formatDuration(progress.dialogue_elapsed_seconds);
   const required = formatDuration(progress.required_elapsed_seconds);
   const maximum = formatDuration(progress.max_elapsed_seconds);
   const showInitialFinishPrompt = progress.finish_prompt_visible && progress.finish_decision !== 'continue_related';
@@ -1169,7 +1160,7 @@ function DialoguePage({
             </p>
             <p>对话时长：{elapsed} / {required}</p>
             <p>回合上限：{progress.max_participant_turns} 个有效回合</p>
-            {elapsedSeconds >= progress.max_elapsed_seconds ? <p>已超过 {maximum}，如感到疲劳可以结束或联系研究者。</p> : null}
+            {progress.dialogue_elapsed_seconds >= progress.max_elapsed_seconds ? <p>已超过 {maximum}，如感到疲劳可以结束或联系研究者。</p> : null}
             <p>{progress.eligible_to_finish ? '已达到完成条件' : '尚未达到完成条件'}</p>
           </div>
           {progress.forced_to_finish ? (
