@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_25_major_grade_injection"
+QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_29_undergraduate_grade_only"
 
 Phase = Literal["pre", "post"]
 
@@ -51,7 +51,7 @@ SCALE_PROFILES: dict[str, ScaleProfile] = {
     "grade_options": ScaleProfile(
         key="grade_options",
         value_type="categorical",
-        options=("大一", "大二", "大三", "大四", "硕士研究生", "博士研究生"),
+        options=("本科一年级", "本科二年级", "本科三年级", "本科四年级", "本科五年级及以上"),
     ),
     "age_years": ScaleProfile(
         key="age_years",
@@ -162,7 +162,7 @@ def build_items() -> tuple[QuestionnaireItem, ...]:
         )
 
     add("pre", "pre_demo_gender", "您的性别", "single_choice", "gender_options", "demographics", "gender")
-    add("pre", "pre_demo_grade", "您目前在读：", "single_choice", "grade_options", "demographics", "grade")
+    add("pre", "pre_demo_grade", "您的本科在读年级：", "single_choice", "grade_options", "demographics", "grade")
     add("pre", "pre_demo_major", "您的专业", "text_input", "major_text", "demographics", "major")
     add("pre", "pre_demo_age", "您的年龄", "number_input", "age_years", "demographics", "age")
     for i, text in enumerate(identity_distress_texts, 1):

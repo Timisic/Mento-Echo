@@ -181,7 +181,7 @@ def test_dialogue_initial_suggestion_from_grade_major_is_not_effective_turn(
 
     assert state.status_code == 200
     suggestion = state.json()["initial_message_suggestion"]
-    assert suggestion == "我是一名大三的学生，我的专业是计算机科学与技术"
+    assert suggestion == "我是一名本科三年级的学生，我的专业是计算机科学与技术"
 
     sent = client.post(
         f"/api/participant/sessions/{session_id}/dialogue/messages",

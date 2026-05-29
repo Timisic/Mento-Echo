@@ -37,6 +37,9 @@ type ParticipantStep =
   | 'complete'
   | 'blocked';
 
+const PARTICIPANT_GROUP_QR_SRC = '/participant-group-qr.svg';
+const PARTICIPANT_INFO_FORM_URL = 'https://www.wjx.top/vm/OAZxGku.aspx#';
+
 const statusLabels: Record<string, string> = {
   not_started: '未开始',
   pre_survey_submitted: '前测完成',
@@ -125,6 +128,13 @@ function LandingPage({ onSelect }: { onSelect: (route: Route) => void }) {
         <p>
           使用匿名被试编号进入实验；没有编号时可由平台自动生成。平台只保存编号和实验数据，不收集你的姓名。
         </p>
+        <div className="participant-group-card" aria-label="被试群二维码">
+          <img className="participant-group-qr" src={PARTICIPANT_GROUP_QR_SRC} alt="被试群二维码" />
+          <div>
+            <h2>被试群</h2>
+            <p>这是本实验被试群。请扫码加入，用于接收实验通知、后续安排和被试费发放提醒。</p>
+          </div>
+        </div>
       </div>
       <div className="role-actions" aria-label="选择入口">
         <button type="button" className="primary-action" onClick={() => onSelect('participant')}>
@@ -708,7 +718,7 @@ function buildQuestionnaireGroups(definition: QuestionnaireDefinition): Question
     return [
       {
         title: '基本信息',
-        description: '请选择与你当前情况相符的选项。',
+        description: '本研究仅面向本科生，请填写当前本科在读年级和专业信息。',
         items: byInstrument('demographics')
       },
       {
@@ -1369,6 +1379,13 @@ function CompletionPage() {
       <p className="eyebrow">实验完成</p>
       <h2 id="completion-heading">感谢参与</h2>
       <p>你已完成前测问卷、AI 对话和后测问卷。本编号的问卷提交已锁定，不能重复提交。</p>
+      <div className="participant-info-panel">
+        <h3>被试费发放信息</h3>
+        <p>请继续填写一次信息收集表，用于核对参与记录并发放被试费。请确保联系方式和收款信息准确。</p>
+        <a className="primary-action completion-link" href={PARTICIPANT_INFO_FORM_URL} target="_blank" rel="noreferrer">
+          填写被试费信息
+        </a>
+      </div>
     </section>
   );
 }

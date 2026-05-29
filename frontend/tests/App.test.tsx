@@ -19,7 +19,7 @@ const session = {
 };
 
 const preQuestionnaire = {
-  questionnaire_version: 'mentor_echo_questionnaire_v2026_05_25_major_grade_injection',
+  questionnaire_version: 'mentor_echo_questionnaire_v2026_05_29_undergraduate_grade_only',
   phase: 'pre',
   locked: false,
   items: [
@@ -40,7 +40,7 @@ const preQuestionnaire = {
       phase: 'pre',
       order: 2,
       item_key: 'pre_demo_grade',
-      item_text: '您目前在读：',
+      item_text: '您的本科在读年级：',
       item_type: 'single_choice',
       scale: 'grade_options',
       instrument: 'demographics',
@@ -117,7 +117,7 @@ const preQuestionnaire = {
       min_value: null,
       max_value: null,
       labels: null,
-      options: ['大一', '大二', '大三', '大四', '硕士研究生', '博士研究生']
+      options: ['本科一年级', '本科二年级', '本科三年级', '本科四年级', '本科五年级及以上']
     },
     major_text: {
       key: 'major_text',
@@ -286,11 +286,38 @@ describe('Mentor Echo 前端 UI', () => {
     render(<App />);
 
     expect(screen.getByRole('heading', { name: 'Mentor Echo AI 对话实验平台' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '被试群二维码' })).toHaveAttribute('src', '/participant-group-qr.svg');
+    expect(screen.getByText('这是本实验被试群。请扫码加入，用于接收实验通知、后续安排和被试费发放提醒。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '我是被试，进入实验' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '我是研究者，进入管理后台' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '导出 ZIP' })).not.toBeInTheDocument();
     expect(screen.queryByTestId('health-status')).not.toBeInTheDocument();
     expect(screen.queryByText(/后端|数据库/)).not.toBeInTheDocument();
+  });
+
+  it('完成后提供被试费信息收集入口', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input).replace(baseUrl, '');
+      if (url === '/api/health') return jsonResponse({ app: 'ok', database: { ok: true } });
+      if (url === '/api/participant/entry') {
+        return jsonResponse({ accepted: true, message: 'ok', session: { ...session, status: 'completed' } });
+      }
+      return Promise.reject(new Error(`Unexpected request ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '我是被试，进入实验' }));
+    fireEvent.change(screen.getByLabelText('被试编号'), { target: { value: 'PILOT001' } });
+    fireEvent.click(screen.getByRole('button', { name: '进入实验' }));
+
+    expect(await screen.findByRole('heading', { name: '感谢参与' })).toBeInTheDocument();
+    expect(screen.getByText('请继续填写一次信息收集表，用于核对参与记录并发放被试费。请确保联系方式和收款信息准确。')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '填写被试费信息' })).toHaveAttribute(
+      'href',
+      'https://www.wjx.top/vm/OAZxGku.aspx#'
+    );
   });
 
   it('被试路径隐藏内部字段，并用问卷和对话进度推进', async () => {
@@ -346,7 +373,7 @@ describe('Mentor Echo 前端 UI', () => {
     expect(await screen.findByRole('heading', { name: '基本信息' })).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '男' }));
-    fireEvent.click(screen.getByRole('button', { name: '大三' }));
+    fireEvent.click(screen.getByRole('button', { name: '本科三年级' }));
     fireEvent.change(screen.getByPlaceholderText('请输入你的专业'), { target: { value: '计算机科学与技术' } });
     fireEvent.change(screen.getByPlaceholderText('请输入年龄'), { target: { value: '20' } });
     scrollIntoViewMock.mockClear();

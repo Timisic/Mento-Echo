@@ -201,7 +201,45 @@ li {
 }
 
 .landing-copy {
+  display: grid;
+  gap: var(--space-lg);
   max-inline-size: 68ch;
+}
+
+.landing-copy > p {
+  margin: 0;
+}
+
+.participant-group-card {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: var(--space-md);
+  align-items: center;
+  max-inline-size: 560px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: var(--space-md);
+  box-shadow: 0 10px 28px oklch(35% 0.04 245 / 0.06);
+}
+
+.participant-group-qr {
+  inline-size: 132px;
+  block-size: 132px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: white;
+  object-fit: contain;
+}
+
+.participant-group-card h2 {
+  margin: 0 0 var(--space-xs);
+  font-size: 1.05rem;
+}
+
+.participant-group-card p {
+  margin: 0;
+  color: var(--muted);
 }
 
 .eyebrow {
@@ -274,6 +312,27 @@ li {
 
 .completion {
   background: var(--success-soft);
+}
+
+.participant-info-panel {
+  display: grid;
+  gap: var(--space-sm);
+  margin-block-start: var(--space-lg);
+  border-block-start: 1px solid var(--border);
+  padding-block-start: var(--space-lg);
+}
+
+.participant-info-panel h3,
+.participant-info-panel p {
+  margin: 0;
+}
+
+.completion-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  text-decoration: none;
 }
 
 .entry-form {
@@ -1006,11 +1065,22 @@ td {
   .questionnaire,
   .management-section,
   .entry-form,
-  .role-actions {
+  .role-actions,
+  .participant-group-card {
     width: 100%;
     inline-size: 100%;
     max-inline-size: 100%;
     padding: var(--space-md);
+  }
+
+  .participant-group-card {
+    grid-template-columns: 1fr;
+  }
+
+  .participant-group-qr {
+    inline-size: min(220px, 100%);
+    block-size: auto;
+    justify-self: center;
   }
 
   .questionnaire {

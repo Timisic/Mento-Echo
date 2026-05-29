@@ -4,6 +4,8 @@ from app.models import AuditLog, ExperimentSession, QuestionnaireResponse, Quest
 from app.questionnaire_config import get_items
 from tests.conftest import import_participants
 
+EXPECTED_QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_29_undergraduate_grade_only"
+
 
 def responses_for_phase(phase: str, *, numeric_value: int = 4, pass_attention: bool = True) -> dict[str, int | str]:
     responses: dict[str, int | str] = {}
@@ -11,7 +13,7 @@ def responses_for_phase(phase: str, *, numeric_value: int = 4, pass_attention: b
         if item.scale == "gender_options":
             responses[item.item_key] = "女"
         elif item.scale == "grade_options":
-            responses[item.item_key] = "大三"
+            responses[item.item_key] = "本科三年级"
         elif item.scale == "major_text":
             responses[item.item_key] = "计算机科学与技术"
         elif item.scale == "age_years":
@@ -40,10 +42,19 @@ def test_pre_questionnaire_renders_from_versioned_config_without_name_fields(cli
 
     assert response.status_code == 200
     body = response.json()
-    assert body["questionnaire_version"] == "mentor_echo_questionnaire_v2026_05_25_major_grade_injection"
+    assert body["questionnaire_version"] == EXPECTED_QUESTIONNAIRE_VERSION
     assert body["phase"] == "pre"
     assert len(body["items"]) == 24
     assert all("姓名" not in item["item_text"] for item in body["items"])
+    grade_item = next(item for item in body["items"] if item["item_key"] == "pre_demo_grade")
+    assert grade_item["item_text"] == "您的本科在读年级："
+    assert body["scales"]["grade_options"]["options"] == [
+        "本科一年级",
+        "本科二年级",
+        "本科三年级",
+        "本科四年级",
+        "本科五年级及以上",
+    ]
     assert any(item["item_key"] == "pre_demo_age" and item["item_text"] == "您的年龄" for item in body["items"])
     assert any(item["item_key"] == "pre_demo_major" and item["item_text"] == "您的专业" for item in body["items"])
     assert all("专业选择/职业方向/价值观/人生目标" not in item["item_text"] for item in body["items"])
@@ -79,7 +90,7 @@ def test_pre_submission_locks_raw_responses_scores_and_assignment(client, admin_
     assert major.response_text == "计算机科学与技术"
     assert major.response_value is None
     sample = next(row for row in rows if row.item_key == "pre_identity_distress_01")
-    assert sample.questionnaire_version == "mentor_echo_questionnaire_v2026_05_25_major_grade_injection"
+    assert sample.questionnaire_version == EXPECTED_QUESTIONNAIRE_VERSION
     assert sample.instrument == "identity_distress"
     assert sample.dimension == "total"
     assert sample.response_value == 5
@@ -89,6 +100,21 @@ def test_pre_submission_locks_raw_responses_scores_and_assignment(client, admin_
     score_by_key = {(score.instrument, score.dimension): score for score in scores}
     assert score_by_key[("identity_distress", "total")].score == 5
     assert score_by_key[("attention_check", "pre_attention")].attention_check_passed is True
+
+
+def test_pre_submission_rejects_non_undergraduate_grade(client, admin_headers):
+    session_id = create_session(client, admin_headers, code="QGRADE")
+    payload = responses_for_phase("pre")
+    payload["pre_demo_grade"] = "硕士研究生"
+
+    response = client.post(
+        f"/api/participant/sessions/{session_id}/questionnaires/pre/submit",
+        json={"responses": payload},
+    )
+
+    assert response.status_code == 422
+    assert "pre_demo_grade must be one of" in response.json()["detail"]
+    assert "硕士研究生" not in response.json()["detail"]
 
 
 def test_attention_check_failure_is_scored(client, admin_headers):
