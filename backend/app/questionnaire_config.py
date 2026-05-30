@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_29_undergraduate_grade_only"
+QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_31_commitment_wording"
 
 Phase = Literal["pre", "post"]
 
@@ -118,7 +118,7 @@ umics = [
     ("commitment", "02", "我的专业选择很适合我。"),
     ("commitment", "03", "我觉得我的专业选择很有吸引力。"),
     ("commitment", "04", "我认同我的专业选择。"),
-    ("commitment", "05", "我对我的专业选择感到有承诺。"),
+    ("commitment", "05", "我坚守我的专业选择。"),
     ("in_depth_exploration", "01", "我经常思考我的专业选择。"),
     ("in_depth_exploration", "02", "我试图去发现关于我的专业选择的新事物。"),
     ("in_depth_exploration", "03", "我经常反思我的专业选择。"),

@@ -4,7 +4,7 @@ from app.models import AuditLog, ExperimentSession, QuestionnaireResponse, Quest
 from app.questionnaire_config import get_items
 from tests.conftest import import_participants
 
-EXPECTED_QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_29_undergraduate_grade_only"
+EXPECTED_QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_31_commitment_wording"
 
 
 def responses_for_phase(phase: str, *, numeric_value: int = 4, pass_attention: bool = True) -> dict[str, int | str]:
@@ -57,10 +57,33 @@ def test_pre_questionnaire_renders_from_versioned_config_without_name_fields(cli
     ]
     assert any(item["item_key"] == "pre_demo_age" and item["item_text"] == "您的年龄" for item in body["items"])
     assert any(item["item_key"] == "pre_demo_major" and item["item_text"] == "您的专业" for item in body["items"])
+    assert any(
+        item["item_key"] == "pre_umics_commitment_05" and item["item_text"] == "我坚守我的专业选择。"
+        for item in body["items"]
+    )
+    assert all(item["item_text"] != "我对我的专业选择感到有承诺。" for item in body["items"])
     assert all("专业选择/职业方向/价值观/人生目标" not in item["item_text"] for item in body["items"])
     assert any(item["item_text"] == "我的专业选择让我对生活有确定感。" for item in body["items"])
     assert not any(item["instrument"] == "dids" for item in body["items"])
     assert {item["item_key"] for item in body["items"]} == {item.item_key for item in get_items("pre")}
+
+
+def test_post_questionnaire_uses_revised_commitment_wording(client, admin_headers, db_session):
+    session_id = create_session(client, admin_headers, code="QTEXT")
+    session = db_session.get(ExperimentSession, session_id)
+    assert session is not None
+    session.status = "chat_completed"
+    db_session.commit()
+
+    response = client.get(f"/api/participant/sessions/{session_id}/questionnaires/post")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert any(
+        item["item_key"] == "post_umics_commitment_05" and item["order"] == 32 and item["item_text"] == "我坚守我的专业选择。"
+        for item in body["items"]
+    )
+    assert all(item["item_text"] != "我对我的专业选择感到有承诺。" for item in body["items"])
 
 
 def test_pre_submission_locks_raw_responses_scores_and_assignment(client, admin_headers, db_session):

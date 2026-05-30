@@ -782,7 +782,8 @@ def reset_questionnaire(
 def get_dialogue(session_id: str, db: Session = Depends(get_session)) -> DialogueStateResponse:
     session, participant = _get_session_and_participant(db, session_id)
     messages = DialogueService.start_or_get(db, session=session, participant=participant)
-    progress = DialogueService.progress_snapshot(db, session=session)
+    progress = DialogueService.heartbeat_progress(db, session=session)
+    db.commit()
     return DialogueStateResponse(
         experiment_session_id=session.id,
         participant_code=participant.participant_code,

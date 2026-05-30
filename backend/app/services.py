@@ -1331,6 +1331,25 @@ class DialogueService:
         )
 
     @staticmethod
+    def heartbeat_progress(db: Session, *, session: ExperimentSession) -> dict[str, object]:
+        participant_messages = list(
+            db.scalars(
+                select(ChatMessage)
+                .where(ChatMessage.experiment_session_id == session.id, ChatMessage.role == "participant")
+                .order_by(ChatMessage.message_index)
+            )
+        )
+        participant_turns = sum(1 for message in participant_messages if DialogueService._countable_effective_turn(message))
+        elapsed = DialogueService._active_elapsed_seconds(session)
+        return DialogueService._progress_payload(
+            db=db,
+            session=session,
+            participant_turns=int(participant_turns),
+            elapsed=elapsed,
+            mutate_session=True,
+        )
+
+    @staticmethod
     def update_progress(db: Session, *, session: ExperimentSession) -> dict[str, object]:
         participant_messages = list(
             db.scalars(

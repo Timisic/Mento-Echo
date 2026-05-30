@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -1461,6 +1461,29 @@ def test_dialogue_elapsed_time_does_not_count_offline_gap_or_force_time_limit(cl
     assert 420 <= progress["dialogue_elapsed_seconds"] < 500
     assert progress["forced_to_finish"] is False
     assert progress["forced_finish_reason"] is None
+
+
+def test_dialogue_get_persists_active_heartbeat_elapsed_time(client, admin_headers, db_session, monkeypatch):
+    session_id = prepared_session(client, admin_headers, code="DHEART", group="experiment")
+    assert client.get(f"/api/participant/sessions/{session_id}/dialogue").status_code == 200
+    session = db_session.get(ExperimentSession, session_id)
+    assert session is not None
+    heartbeat_at = datetime(2026, 5, 31, 12, 0, 0, tzinfo=UTC)
+    session.dialogue_elapsed_seconds = 100
+    session.chat_started_at = heartbeat_at - timedelta(minutes=5)
+    session.last_seen_at = heartbeat_at - timedelta(seconds=30)
+    db_session.commit()
+    monkeypatch.setattr("app.services.now_utc", lambda: heartbeat_at)
+
+    state = client.get(f"/api/participant/sessions/{session_id}/dialogue")
+
+    assert state.status_code == 200
+    assert state.json()["progress"]["dialogue_elapsed_seconds"] == 130
+    db_session.expire_all()
+    stored = db_session.get(ExperimentSession, session_id)
+    assert stored is not None
+    assert stored.dialogue_elapsed_seconds == 130
+    assert stored.last_seen_at == heartbeat_at
 
 
 def test_ai_provider_failure_response_keeps_cors_header(client, admin_headers, db_session, monkeypatch):

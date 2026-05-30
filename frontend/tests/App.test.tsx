@@ -19,7 +19,7 @@ const session = {
 };
 
 const preQuestionnaire = {
-  questionnaire_version: 'mentor_echo_questionnaire_v2026_05_29_undergraduate_grade_only',
+  questionnaire_version: 'mentor_echo_questionnaire_v2026_05_31_commitment_wording',
   phase: 'pre',
   locked: false,
   items: [
