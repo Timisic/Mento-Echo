@@ -39,6 +39,7 @@ type ParticipantStep =
 
 const PARTICIPANT_GROUP_QR_SRC = '/participant-group-qr.png';
 const PARTICIPANT_INFO_FORM_URL = 'https://www.wjx.top/vm/OAZxGku.aspx#';
+const ACTIVE_ELAPSED_DISPLAY_GRACE_SECONDS = 45;
 
 const statusLabels: Record<string, string> = {
   not_started: '未开始',
@@ -1040,8 +1041,20 @@ function DialoguePage({
   onBack: () => void;
 }) {
   const progress = dialogue.progress;
+  const [displayedElapsedSeconds, setDisplayedElapsedSeconds] = useState(progress.dialogue_elapsed_seconds);
   const [visibleReminder, setVisibleReminder] = useState<string | null>(null);
   const shownReminderKeys = useRef<string[]>([]);
+
+  useEffect(() => {
+    const baselineElapsed = progress.dialogue_elapsed_seconds;
+    const baselineTime = Date.now();
+    setDisplayedElapsedSeconds(baselineElapsed);
+    const timer = window.setInterval(() => {
+      const localElapsed = Math.floor((Date.now() - baselineTime) / 1000);
+      setDisplayedElapsedSeconds(baselineElapsed + Math.min(localElapsed, ACTIVE_ELAPSED_DISPLAY_GRACE_SECONDS));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [progress.dialogue_elapsed_seconds]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1075,7 +1088,7 @@ function DialoguePage({
     return () => window.clearTimeout(timer);
   }, [progress.reminder_text, reminderKey]);
 
-  const elapsed = formatDuration(progress.dialogue_elapsed_seconds);
+  const elapsed = formatDuration(displayedElapsedSeconds);
   const required = formatDuration(progress.required_elapsed_seconds);
   const maximum = formatDuration(progress.max_elapsed_seconds);
   const showInitialFinishPrompt = progress.finish_prompt_visible && progress.finish_decision !== 'continue_related';
@@ -1160,7 +1173,7 @@ function DialoguePage({
             </p>
             <p>对话时长：{elapsed} / {required}</p>
             <p>回合上限：{progress.max_participant_turns} 个有效回合</p>
-            {progress.dialogue_elapsed_seconds >= progress.max_elapsed_seconds ? <p>已超过 {maximum}，如感到疲劳可以结束或联系研究者。</p> : null}
+            {displayedElapsedSeconds >= progress.max_elapsed_seconds ? <p>已超过 {maximum}，如感到疲劳可以结束或联系研究者。</p> : null}
             <p>{progress.eligible_to_finish ? '已达到完成条件' : '尚未达到完成条件'}</p>
           </div>
           {progress.forced_to_finish ? (
@@ -1216,6 +1229,7 @@ function MarkdownContent({ text }: { text: string }) {
   let unorderedItems: string[] = [];
   let orderedItems: string[] = [];
   let paragraph: string[] = [];
+  let listBreakPending = false;
   let codeLines: string[] = [];
   let inCodeBlock = false;
 
@@ -1232,16 +1246,24 @@ function MarkdownContent({ text }: { text: string }) {
     paragraph = [];
   }
 
+  function renderListItem(line: string): ReactNode[] {
+    return line.split('\n').flatMap((part, index) => {
+      const parsed = parseInlineMarkdown(part);
+      return index === 0 ? parsed : [<br key={`li-br-${index}`} />, ...parsed];
+    });
+  }
+
   function flushUnorderedItems() {
     if (unorderedItems.length === 0) return;
     nodes.push(
       <ul key={`list-${nodes.length}`}>
         {unorderedItems.map((line, index) => (
-          <li key={`${line}-${index}`}>{parseInlineMarkdown(line)}</li>
+          <li key={`${line}-${index}`}>{renderListItem(line)}</li>
         ))}
       </ul>
     );
     unorderedItems = [];
+    listBreakPending = false;
   }
 
   function flushOrderedItems() {
@@ -1249,11 +1271,12 @@ function MarkdownContent({ text }: { text: string }) {
     nodes.push(
       <ol key={`ordered-${nodes.length}`}>
         {orderedItems.map((line, index) => (
-          <li key={`${line}-${index}`}>{parseInlineMarkdown(line)}</li>
+          <li key={`${line}-${index}`}>{renderListItem(line)}</li>
         ))}
       </ol>
     );
     orderedItems = [];
+    listBreakPending = false;
   }
 
   function flushLists() {
@@ -1286,6 +1309,10 @@ function MarkdownContent({ text }: { text: string }) {
     }
     if (!trimmed) {
       flushParagraph();
+      if (orderedItems.length > 0 || unorderedItems.length > 0) {
+        listBreakPending = true;
+        return;
+      }
       flushLists();
       return;
     }
@@ -1293,15 +1320,26 @@ function MarkdownContent({ text }: { text: string }) {
       flushParagraph();
       flushOrderedItems();
       unorderedItems.push(trimmed.slice(2));
+      listBreakPending = false;
       return;
     }
-    const orderedMatch = trimmed.match(/^\d+[.)]\s+(.+)$/);
+    const orderedMatch = trimmed.match(/^\d+[.)、]\s*(.+)$/);
     if (orderedMatch) {
       flushParagraph();
       flushUnorderedItems();
       orderedItems.push(orderedMatch[1]);
+      listBreakPending = false;
       return;
     }
+    if (!listBreakPending && orderedItems.length > 0) {
+      orderedItems[orderedItems.length - 1] = `${orderedItems[orderedItems.length - 1]}\n${trimmed}`;
+      return;
+    }
+    if (!listBreakPending && unorderedItems.length > 0) {
+      unorderedItems[unorderedItems.length - 1] = `${unorderedItems[unorderedItems.length - 1]}\n${trimmed}`;
+      return;
+    }
+    listBreakPending = false;
     flushLists();
     if (/^#{1,3}\s+/.test(trimmed)) {
       flushParagraph();

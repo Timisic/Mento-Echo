@@ -185,7 +185,7 @@ const dialogueState = {
       message_index: 1,
       role: 'assistant',
       content:
-        '**你好**，请从你愿意分享的内容开始。\n这是一行补充说明。\n\n- 列出一个想法\n1. 再补充一个步骤\n\n可以参考[资料](https://example.com/guide)，不要打开[危险](javascript:alert(1))。\n\n```ts\nconst choice = \"major\";\n```\n\n<script>alert(\"xss\")</script>',
+        '**你好**，请从你愿意分享的内容开始。\n这是一行补充说明。\n\n- 列出一个想法\n1. 再补充一个步骤\n\n1、用户研究/UX Research\n需要访谈、问卷、实验设计、数据分析。\n\n1、数据分析助理\n从Excel、SQL、Python、可视化开始。\n\n可以参考[资料](https://example.com/guide)，不要打开[危险](javascript:alert(1))。\n\n```ts\nconst choice = \"major\";\n```\n\n<script>alert(\"xss\")</script>',
       provider_name: null,
       model_name: null,
       system_prompt_version: null,
@@ -409,6 +409,14 @@ describe('Mentor Echo 前端 UI', () => {
     expect(screen.getByRole('link', { name: '资料' })).toHaveAttribute('href', 'https://example.com/guide');
     expect(screen.queryByRole('link', { name: '危险' })).not.toBeInTheDocument();
     expect(container.querySelector('.markdown-content p br')).not.toBeNull();
+    const orderedLists = [...container.querySelectorAll('.markdown-content ol')];
+    expect(orderedLists).toHaveLength(1);
+    const orderedItems = [...orderedLists[0].querySelectorAll('li')].map((item) => item.textContent);
+    expect(orderedItems).toEqual([
+      '再补充一个步骤',
+      '用户研究/UX Research需要访谈、问卷、实验设计、数据分析。',
+      '数据分析助理从Excel、SQL、Python、可视化开始。'
+    ]);
     expect(container.querySelector('.markdown-content pre code')?.textContent).toBe('const choice = "major";');
     expect(container.querySelector('.markdown-content script')).toBeNull();
     expect(screen.queryByText('experiment_identity_dialogue_v1')).not.toBeInTheDocument();
@@ -477,7 +485,7 @@ describe('Mentor Echo 前端 UI', () => {
     expect(container.querySelector('.topic-banner')).toBeNull();
   });
 
-  it('对话时长显示以后端返回的活跃时长为准，不用本地计时器提前达标', async () => {
+  it('对话时长在后端心跳值之间平滑显示，但不会无限虚增', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const activeSession = {
       ...session,
@@ -503,12 +511,17 @@ describe('Mentor Echo 前端 UI', () => {
 
     expect(await screen.findByText('对话时长：04:21 / 10:00')).toBeInTheDocument();
 
-    act(() => {
-      vi.advanceTimersByTime(29_000);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29_000);
     });
 
-    expect(screen.getByText('对话时长：04:21 / 10:00')).toBeInTheDocument();
-    expect(screen.queryByText('对话时长：04:50 / 10:00')).not.toBeInTheDocument();
+    expect(screen.getByText('对话时长：04:50 / 10:00')).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+
+    expect(screen.getByText('对话时长：05:06 / 10:00')).toBeInTheDocument();
+    expect(screen.queryByText('对话时长：05:10 / 10:00')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '暂不能进入后测' })).toBeDisabled();
   });
 
