@@ -30,3 +30,13 @@ def test_backend_target_preserves_api_path_and_query_string():
         serve_frontend.backend_target_url("http://127.0.0.1:8000/", "/api/health?deep=1")
         == "http://127.0.0.1:8000/api/health?deep=1"
     )
+
+
+def test_self_registration_enabled_reads_environment(monkeypatch):
+    serve_frontend = _load_serve_frontend_module()
+
+    monkeypatch.delenv("SELF_REGISTRATION_ENABLED", raising=False)
+    assert serve_frontend.self_registration_enabled()
+
+    monkeypatch.setenv("SELF_REGISTRATION_ENABLED", "false")
+    assert not serve_frontend.self_registration_enabled()

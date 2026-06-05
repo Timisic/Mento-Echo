@@ -242,7 +242,7 @@ class ParticipantRegistryService:
     def self_register(db: Session) -> tuple[Participant, ExperimentSession]:
         settings = get_settings()
         if not settings.self_registration_enabled:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Participant self-registration is disabled")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="人数过多，被试已招满")
         participant = ParticipantRegistryService._create_self_generated_participant(db)
         session = ExperimentSession(
             participant_id=participant.id,

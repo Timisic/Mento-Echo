@@ -85,7 +85,9 @@ function userFacingError(error: unknown): string {
   if (message.includes('Admin token required')) return '研究者登录已失效，请重新登录。';
   if (message.includes('Participant code not recognized')) return '未找到该被试编号，请检查后重试或联系研究者。';
   if (message.includes('AI response is still pending')) return '上一条回复仍在生成，请稍候。';
-  if (message.includes('Participant self-registration is disabled')) return '暂时不能自动生成编号，请联系研究者。';
+  if (message.includes('Participant self-registration is disabled') || message.includes('人数过多，被试已招满')) {
+    return '人数过多，被试已招满。';
+  }
   if (message.includes('Post-survey is available only after dialogue completion')) {
     return '后测问卷会在 AI 对话完成后开放。';
   }

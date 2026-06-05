@@ -17,6 +17,8 @@ HOP_BY_HOP_HEADERS = {
     "upgrade",
 }
 
+SELF_REGISTRATION_CLOSED_BODY = '{"detail":"人数过多，被试已招满"}'.encode()
+
 
 def is_api_path(path: str) -> bool:
     return path == "/api" or path.startswith("/api/")
@@ -26,10 +28,26 @@ def backend_target_url(backend_url: str, path: str) -> str:
     return f"{backend_url.rstrip('/')}{path}"
 
 
+def self_registration_enabled() -> bool:
+    return os.environ.get("SELF_REGISTRATION_ENABLED", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
 class SpaHandler(SimpleHTTPRequestHandler):
     backend_url = "http://127.0.0.1:8000"
 
     def _proxy_api_request(self) -> None:
+        if self.command == "POST" and self.path == "/api/participant/self-register" and not self_registration_enabled():
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(SELF_REGISTRATION_CLOSED_BODY)))
+            self.end_headers()
+            self.wfile.write(SELF_REGISTRATION_CLOSED_BODY)
+            return
         target = backend_target_url(self.backend_url, self.path)
         length = int(self.headers.get("Content-Length") or "0")
         body = self.rfile.read(length) if length else None
