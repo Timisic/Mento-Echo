@@ -314,9 +314,10 @@ describe('Mentor Echo 前端 UI', () => {
 
     expect(await screen.findByRole('heading', { name: '感谢参与' })).toBeInTheDocument();
     expect(screen.getByText('请继续填写一次信息收集表，用于核对参与记录并发放被试费。请确保联系方式和收款信息准确。')).toBeInTheDocument();
+    expect(screen.getByText(/你的被试编号是：/)).toHaveTextContent('PILOT001');
     expect(screen.getByRole('link', { name: '填写被试费信息' })).toHaveAttribute(
       'href',
-      'https://www.wjx.top/vm/OAZxGku.aspx#'
+      'https://www.wjx.top/vm/rZaC9UQ.aspx#'
     );
   });
 
@@ -472,7 +473,7 @@ describe('Mentor Echo 前端 UI', () => {
     });
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/api/participant/sessions/session-1/dialogue`, expect.any(Object));
+      expect(fetchMock).toHaveBeenCalledWith('/api/participant/sessions/session-1/dialogue', expect.any(Object));
     });
 
     act(() => {
@@ -580,7 +581,7 @@ describe('Mentor Echo 前端 UI', () => {
     fireEvent.click(screen.getByRole('button', { name: '确认' }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/api/admin/export`, expect.any(Object));
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/export', expect.any(Object));
     });
   });
 });

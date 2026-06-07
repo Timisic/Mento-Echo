@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     study_mode: str = Field(default="pilot_single", alias="STUDY_MODE")
     self_registration_enabled: bool = Field(default=True, alias="SELF_REGISTRATION_ENABLED")
     participant_code_prefix: str = Field(default="P", alias="PARTICIPANT_CODE_PREFIX")
+    self_registration_start_number: int = Field(default=500, alias="SELF_REGISTRATION_START_NUMBER")
+    self_registration_limit: int = Field(default=22, alias="SELF_REGISTRATION_LIMIT")
     codex_command: str = Field(default="codex app-server --disable hooks", alias="CODEX_COMMAND")
     codex_approval_policy: str = Field(default="never", alias="CODEX_APPROVAL_POLICY")
     codex_sandbox: str = Field(default="read-only", alias="CODEX_SANDBOX")

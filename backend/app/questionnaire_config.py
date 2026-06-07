@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_31_commitment_wording"
+QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_06_07_bpnsfs_competence"
 
 Phase = Literal["pre", "post"]
 
@@ -244,6 +244,10 @@ def build_items() -> tuple[QuestionnaireItem, ...]:
         ("autonomy_satisfaction", "02", "在这次对话中，我觉得自己是在从自己的立场出发看待这些问题。"),
         ("autonomy_satisfaction", "04", "这次对话让我觉得，关于自己未来方向的思考是由我自己主导的。"),
         ("autonomy_satisfaction", "05", "在这次对话中，我觉得自己可以比较自由地表达对这些问题的真实想法。"),
+        ("competence_satisfaction", "01", "对话之后，我更有信心面对和自己未来有关的问题。"),
+        ("competence_satisfaction", "02", "这次对话让我觉得自己更有能力理清这些关于自我和未来的问题。"),
+        ("competence_satisfaction", "03", "这次对话让我觉得自己更知道接下来可以如何继续探索。"),
+        ("competence_satisfaction", "04", "即使这些问题比较复杂，我也觉得自己能够继续推进下去。"),
         ("relatedness_satisfaction", "01", "在这次对话中，我觉得自己的想法被认真对待了。"),
         ("relatedness_satisfaction", "02", "在这次对话中，我感到自己是被理解的。"),
         ("relatedness_satisfaction", "03", "这次对话让我觉得自己可以把这些困惑说出来，而不是被评判。"),

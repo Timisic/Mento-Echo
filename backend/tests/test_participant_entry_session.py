@@ -12,8 +12,8 @@ def test_participant_self_registration_generates_sequential_code_with_suffix(cli
     assert second.status_code == 200, second.text
     first_body = first.json()
     second_body = second.json()
-    assert first_body["participant_code"].startswith("P001-")
-    assert second_body["participant_code"].startswith("P002-")
+    assert first_body["participant_code"].startswith("P500-")
+    assert second_body["participant_code"].startswith("P501-")
     assert first_body["session"]["participant_code"] == first_body["participant_code"]
     assert first_body["session"]["status"] == "not_started"
 
@@ -30,14 +30,28 @@ def test_self_registration_continues_after_cleanup_high_watermark(client, db_ses
         admin_id="researcher",
         action="participant_cleanup_under_six_turns",
         target_type="participant_batch",
-        metadata={"self_registration_high_watermark_by_prefix": {"P": 18}},
+        metadata={"self_registration_high_watermark_by_prefix": {"P": 518}},
     )
     db_session.commit()
 
     response = client.post("/api/participant/self-register")
 
     assert response.status_code == 200, response.text
-    assert response.json()["participant_code"].startswith("P019-")
+    assert response.json()["participant_code"].startswith("P519-")
+
+
+def test_self_registration_stops_after_twenty_two_new_codes(client):
+    issued_codes = [
+        client.post("/api/participant/self-register").json()["participant_code"]
+        for _ in range(22)
+    ]
+
+    blocked = client.post("/api/participant/self-register")
+
+    assert issued_codes[0].startswith("P500-")
+    assert issued_codes[-1].startswith("P521-")
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"] == "人数过多，被试已招满"
 
 
 def test_participant_code_entry_accepts_known_rejects_unknown_and_logs_events(client, admin_headers):

@@ -4,7 +4,7 @@ from app.models import AuditLog, ExperimentSession, QuestionnaireResponse, Quest
 from app.questionnaire_config import get_items
 from tests.conftest import import_participants
 
-EXPECTED_QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_05_31_commitment_wording"
+EXPECTED_QUESTIONNAIRE_VERSION = "mentor_echo_questionnaire_v2026_06_07_bpnsfs_competence"
 
 
 def responses_for_phase(phase: str, *, numeric_value: int = 4, pass_attention: bool = True) -> dict[str, int | str]:
@@ -80,7 +80,7 @@ def test_post_questionnaire_uses_revised_commitment_wording(client, admin_header
     assert response.status_code == 200, response.text
     body = response.json()
     assert any(
-        item["item_key"] == "post_umics_commitment_05" and item["order"] == 32 and item["item_text"] == "我坚守我的专业选择。"
+        item["item_key"] == "post_umics_commitment_05" and item["order"] == 36 and item["item_text"] == "我坚守我的专业选择。"
         for item in body["items"]
     )
     assert all(item["item_text"] != "我对我的专业选择感到有承诺。" for item in body["items"])
@@ -206,7 +206,7 @@ def test_post_questionnaire_stores_ai_warmth_separately_from_anthropomorphism(
 
     assert definition.status_code == 200, definition.text
     body = definition.json()
-    assert len(body["items"]) == 40
+    assert len(body["items"]) == 44
     warmth_items = [item for item in body["items"] if item["instrument"] == "ai_warmth"]
     assert [item["item_key"] for item in warmth_items] == [
         "post_ai_warmth_01",
@@ -222,6 +222,21 @@ def test_post_questionnaire_stores_ai_warmth_separately_from_anthropomorphism(
     ]
     assert all(item["scale"] == "agreement_1_7" for item in warmth_items)
     assert len([item for item in body["items"] if item["instrument"] == "ai_anthropomorphism"]) == 5
+    bpnsfs_items = [item for item in body["items"] if item["instrument"] == "bpnsfs_adapted_dialogue_experience"]
+    assert [item["item_key"] for item in bpnsfs_items][3:8] == [
+        "post_bpnsfs_autonomy_satisfaction_05",
+        "post_bpnsfs_competence_satisfaction_01",
+        "post_bpnsfs_competence_satisfaction_02",
+        "post_bpnsfs_competence_satisfaction_03",
+        "post_bpnsfs_competence_satisfaction_04",
+    ]
+    assert [item["item_text"] for item in bpnsfs_items if item["dimension"] == "competence_satisfaction"] == [
+        "对话之后，我更有信心面对和自己未来有关的问题。",
+        "这次对话让我觉得自己更有能力理清这些关于自我和未来的问题。",
+        "这次对话让我觉得自己更知道接下来可以如何继续探索。",
+        "即使这些问题比较复杂，我也觉得自己能够继续推进下去。",
+    ]
+    assert all(item["scale"] == "bpnsfs_agreement_1_5" for item in bpnsfs_items)
 
     payload = responses_for_phase("post", numeric_value=4)
     for item in warmth_items:
@@ -232,7 +247,7 @@ def test_post_questionnaire_stores_ai_warmth_separately_from_anthropomorphism(
     )
 
     assert submit.status_code == 200, submit.text
-    assert submit.json()["response_count"] == 40
+    assert submit.json()["response_count"] == 44
     stored_warmth = db_session.query(QuestionnaireResponse).filter_by(
         experiment_session_id=session_id,
         phase="post",
@@ -244,7 +259,10 @@ def test_post_questionnaire_stores_ai_warmth_separately_from_anthropomorphism(
     scores = db_session.query(QuestionnaireScore).filter_by(
         experiment_session_id=session_id,
         phase="post",
-        instrument="ai_warmth",
     ).all()
-    score_by_dimension = {score.dimension: score.score for score in scores}
-    assert score_by_dimension == {"mean": 6.0, "sum": 24.0}
+    score_by_key = {(score.instrument, score.dimension): score for score in scores}
+    assert score_by_key[("ai_warmth", "mean")].score == 6.0
+    assert score_by_key[("ai_warmth", "sum")].score == 24.0
+    assert score_by_key[("bpnsfs_adapted_dialogue_experience", "competence_satisfaction")].score == 4.0
+    assert score_by_key[("bpnsfs_adapted_dialogue_experience", "competence_satisfaction")].valid_items == 4
+    assert score_by_key[("bpnsfs_adapted_dialogue_experience", "need_satisfaction_total")].valid_items == 12

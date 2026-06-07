@@ -1,7 +1,7 @@
 # Questionnaire Implementation Map
 
 Status: researcher-confirmed for current MVP implementation
-Questionnaire version: `mentor_echo_questionnaire_v2026_05_18_major_umics_age`
+Questionnaire version: `mentor_echo_questionnaire_v2026_06_07_bpnsfs_competence`
 Source snapshot: `docs/source/汇总问卷.docx` and `docs/汇总问卷.md`.
 Related issue: <https://github.com/Timisic/Mento-Echo/issues/6>
 Amended by Linear issue: `DEC-106`
@@ -66,12 +66,15 @@ All implemented items below are required unless explicitly marked otherwise. Par
 | post | ai_anthropomorphism | answering_vs_responding | 1 | mean(post_ai_anthropomorphism_03) |
 | post | ai_anthropomorphism | program_vs_conversational | 1 | mean(post_ai_anthropomorphism_04) |
 | post | ai_anthropomorphism | low_interaction_vs_interactive | 1 | mean(post_ai_anthropomorphism_05) |
+| post | ai_warmth | mean | 4 | mean(post_ai_warmth_01, post_ai_warmth_02, post_ai_warmth_03, post_ai_warmth_04) |
+| post | ai_warmth | sum | 4 | sum(post_ai_warmth_01, post_ai_warmth_02, post_ai_warmth_03, post_ai_warmth_04) |
 | post | bpnsfs_adapted_dialogue_experience | autonomy_satisfaction | 4 | mean(post_bpnsfs_autonomy_satisfaction_01, post_bpnsfs_autonomy_satisfaction_02, post_bpnsfs_autonomy_satisfaction_04, post_bpnsfs_autonomy_satisfaction_05) |
+| post | bpnsfs_adapted_dialogue_experience | competence_satisfaction | 4 | mean(post_bpnsfs_competence_satisfaction_01, post_bpnsfs_competence_satisfaction_02, post_bpnsfs_competence_satisfaction_03, post_bpnsfs_competence_satisfaction_04) |
 | post | bpnsfs_adapted_dialogue_experience | relatedness_satisfaction | 4 | mean(post_bpnsfs_relatedness_satisfaction_01, post_bpnsfs_relatedness_satisfaction_02, post_bpnsfs_relatedness_satisfaction_03, post_bpnsfs_relatedness_satisfaction_04) |
 | post | umics | commitment | 5 | mean(post_umics_commitment_01, post_umics_commitment_02, post_umics_commitment_03, post_umics_commitment_04, post_umics_commitment_05) |
 | post | umics | in_depth_exploration | 5 | mean(post_umics_in_depth_exploration_01, post_umics_in_depth_exploration_02, post_umics_in_depth_exploration_03, post_umics_in_depth_exploration_04, post_umics_in_depth_exploration_05) |
 | post | umics | reconsideration_of_commitment | 3 | mean(post_umics_reconsideration_of_commitment_01, post_umics_reconsideration_of_commitment_02, post_umics_reconsideration_of_commitment_03) |
-| post | bpnsfs_adapted_dialogue_experience | need_satisfaction_total | 8 | mean(post_bpnsfs_autonomy_satisfaction_01, post_bpnsfs_autonomy_satisfaction_02, post_bpnsfs_autonomy_satisfaction_04, post_bpnsfs_autonomy_satisfaction_05, post_bpnsfs_relatedness_satisfaction_01, post_bpnsfs_relatedness_satisfaction_02, post_bpnsfs_relatedness_satisfaction_03, post_bpnsfs_relatedness_satisfaction_04) |
+| post | bpnsfs_adapted_dialogue_experience | need_satisfaction_total | 12 | mean(post_bpnsfs_autonomy_satisfaction_01, post_bpnsfs_autonomy_satisfaction_02, post_bpnsfs_autonomy_satisfaction_04, post_bpnsfs_autonomy_satisfaction_05, post_bpnsfs_competence_satisfaction_01, post_bpnsfs_competence_satisfaction_02, post_bpnsfs_competence_satisfaction_03, post_bpnsfs_competence_satisfaction_04, post_bpnsfs_relatedness_satisfaction_01, post_bpnsfs_relatedness_satisfaction_02, post_bpnsfs_relatedness_satisfaction_03, post_bpnsfs_relatedness_satisfaction_04) |
 
 ## Resolved source issues
 
@@ -132,33 +135,41 @@ All implemented items below are required unless explicitly marked otherwise. Par
 | 13 | post | post_ai_anthropomorphism_03 | 左：这个 AI 更像是在输出答案 / 右：这个 AI 更像是在回应我 | matrix_semantic_differential | semantic_differential_1_5 | ai_anthropomorphism | answering_vs_responding | false | true | false | scored |
 | 14 | post | post_ai_anthropomorphism_04 | 左：这个 AI 更像一个程序 / 右：这个 AI 更像可以和我交流 | matrix_semantic_differential | semantic_differential_1_5 | ai_anthropomorphism | program_vs_conversational | false | true | false | scored |
 | 15 | post | post_ai_anthropomorphism_05 | 左：这个 AI 几乎没有互动感 / 右：这个 AI 有明显的互动感 | matrix_semantic_differential | semantic_differential_1_5 | ai_anthropomorphism | low_interaction_vs_interactive | false | true | false | scored |
-| 16 | post | post_bpnsfs_autonomy_satisfaction_01 | 在刚才这次对话中，我觉得自己可以按照自己的想法去思考和自己未来有关的内容。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | autonomy_satisfaction | false | true | false | scored |
-| 17 | post | post_bpnsfs_autonomy_satisfaction_02 | 在这次对话中，我觉得自己是在从自己的立场出发看待这些问题。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | autonomy_satisfaction | false | true | false | scored |
-| 18 | post | post_bpnsfs_autonomy_satisfaction_04 | 这次对话让我觉得，关于自己未来方向的思考是由我自己主导的。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | autonomy_satisfaction | false | true | false | scored |
-| 19 | post | post_bpnsfs_autonomy_satisfaction_05 | 在这次对话中，我觉得自己可以比较自由地表达对这些问题的真实想法。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | autonomy_satisfaction | false | true | false | scored |
-| 20 | post | post_bpnsfs_relatedness_satisfaction_01 | 在这次对话中，我觉得自己的想法被认真对待了。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | relatedness_satisfaction | false | true | false | scored |
-| 21 | post | post_bpnsfs_relatedness_satisfaction_02 | 在这次对话中，我感到自己是被理解的。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | relatedness_satisfaction | false | true | false | scored |
-| 22 | post | post_bpnsfs_relatedness_satisfaction_03 | 这次对话让我觉得自己可以把这些困惑说出来，而不是被评判。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | relatedness_satisfaction | false | true | false | scored |
-| 23 | post | post_bpnsfs_relatedness_satisfaction_04 | 与通用大模型对话时，我感受到一种支持性的、较为温和的交流氛围。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | relatedness_satisfaction | false | true | false | scored |
-| 24 | post | post_umics_commitment_01 | 我的专业选择让我对生活有确定感。 | matrix_single_choice | agreement_1_5 | umics | commitment | false | true | false | scored |
-| 25 | post | post_umics_commitment_02 | 我的专业选择很适合我。 | matrix_single_choice | agreement_1_5 | umics | commitment | false | true | false | scored |
-| 26 | post | post_umics_commitment_03 | 我觉得我的专业选择很有吸引力。 | matrix_single_choice | agreement_1_5 | umics | commitment | false | true | false | scored |
-| 27 | post | post_umics_commitment_04 | 我认同我的专业选择。 | matrix_single_choice | agreement_1_5 | umics | commitment | false | true | false | scored |
-| 28 | post | post_umics_commitment_05 | 我对我的专业选择感到有承诺。 | matrix_single_choice | agreement_1_5 | umics | commitment | false | true | false | scored |
-| 29 | post | post_umics_in_depth_exploration_01 | 我经常思考我的专业选择。 | matrix_single_choice | agreement_1_5 | umics | in_depth_exploration | false | true | false | scored |
-| 30 | post | post_umics_in_depth_exploration_02 | 我试图去发现关于我的专业选择的新事物。 | matrix_single_choice | agreement_1_5 | umics | in_depth_exploration | false | true | false | scored |
-| 31 | post | post_umics_in_depth_exploration_03 | 我经常反思我的专业选择。 | matrix_single_choice | agreement_1_5 | umics | in_depth_exploration | false | true | false | scored |
-| 32 | post | post_umics_in_depth_exploration_04 | 我经常和其他人谈论我的专业选择。 | matrix_single_choice | agreement_1_5 | umics | in_depth_exploration | false | true | false | scored |
-| 33 | post | post_umics_in_depth_exploration_05 | 我试图尽可能多地了解我的专业选择。 | matrix_single_choice | agreement_1_5 | umics | in_depth_exploration | false | true | false | scored |
-| 34 | post | post_umics_reconsideration_of_commitment_01 | 我经常想，试着去寻找一个不同的专业选择可能会更好。 | matrix_single_choice | agreement_1_5 | umics | reconsideration_of_commitment | false | true | false | scored |
-| 35 | post | post_umics_reconsideration_of_commitment_02 | 我经常想，一个新的专业选择会让我的生活变得更有趣。 | matrix_single_choice | agreement_1_5 | umics | reconsideration_of_commitment | false | true | false | scored |
-| 36 | post | post_umics_reconsideration_of_commitment_03 | 事实上，我正在寻找一个不同的专业选择。 | matrix_single_choice | agreement_1_5 | umics | reconsideration_of_commitment | false | true | false | scored |
+| 16 | post | post_ai_warmth_01 | 在刚才的对话中，这个 AI 的回应是温和的。 | single_choice | agreement_1_7 | ai_warmth | warmth_perception | false | true | false | scored |
+| 17 | post | post_ai_warmth_02 | 这个 AI 对我是友善的。 | single_choice | agreement_1_7 | ai_warmth | warmth_perception | false | true | false | scored |
+| 18 | post | post_ai_warmth_03 | 这个 AI 的表达让我感到有善意。 | single_choice | agreement_1_7 | ai_warmth | warmth_perception | false | true | false | scored |
+| 19 | post | post_ai_warmth_04 | 这个 AI 的回应是真诚的。 | single_choice | agreement_1_7 | ai_warmth | warmth_perception | false | true | false | scored |
+| 20 | post | post_bpnsfs_autonomy_satisfaction_01 | 在刚才这次对话中，我觉得自己可以按照自己的想法去思考和自己未来有关的内容。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | autonomy_satisfaction | false | true | false | scored |
+| 21 | post | post_bpnsfs_autonomy_satisfaction_02 | 在这次对话中，我觉得自己是在从自己的立场出发看待这些问题。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | autonomy_satisfaction | false | true | false | scored |
+| 22 | post | post_bpnsfs_autonomy_satisfaction_04 | 这次对话让我觉得，关于自己未来方向的思考是由我自己主导的。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | autonomy_satisfaction | false | true | false | scored |
+| 23 | post | post_bpnsfs_autonomy_satisfaction_05 | 在这次对话中，我觉得自己可以比较自由地表达对这些问题的真实想法。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | autonomy_satisfaction | false | true | false | scored |
+| 24 | post | post_bpnsfs_competence_satisfaction_01 | 对话之后，我更有信心面对和自己未来有关的问题。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | competence_satisfaction | false | true | false | scored |
+| 25 | post | post_bpnsfs_competence_satisfaction_02 | 这次对话让我觉得自己更有能力理清这些关于自我和未来的问题。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | competence_satisfaction | false | true | false | scored |
+| 26 | post | post_bpnsfs_competence_satisfaction_03 | 这次对话让我觉得自己更知道接下来可以如何继续探索。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | competence_satisfaction | false | true | false | scored |
+| 27 | post | post_bpnsfs_competence_satisfaction_04 | 即使这些问题比较复杂，我也觉得自己能够继续推进下去。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | competence_satisfaction | false | true | false | scored |
+| 28 | post | post_bpnsfs_relatedness_satisfaction_01 | 在这次对话中，我觉得自己的想法被认真对待了。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | relatedness_satisfaction | false | true | false | scored |
+| 29 | post | post_bpnsfs_relatedness_satisfaction_02 | 在这次对话中，我感到自己是被理解的。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | relatedness_satisfaction | false | true | false | scored |
+| 30 | post | post_bpnsfs_relatedness_satisfaction_03 | 这次对话让我觉得自己可以把这些困惑说出来，而不是被评判。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | relatedness_satisfaction | false | true | false | scored |
+| 31 | post | post_bpnsfs_relatedness_satisfaction_04 | 与通用大模型对话时，我感受到一种支持性的、较为温和的交流氛围。 | single_choice | bpnsfs_agreement_1_5 | bpnsfs_adapted_dialogue_experience | relatedness_satisfaction | false | true | false | scored |
+| 32 | post | post_umics_commitment_01 | 我的专业选择让我对生活有确定感。 | matrix_single_choice | agreement_1_5 | umics | commitment | false | true | false | scored |
+| 33 | post | post_umics_commitment_02 | 我的专业选择很适合我。 | matrix_single_choice | agreement_1_5 | umics | commitment | false | true | false | scored |
+| 34 | post | post_umics_commitment_03 | 我觉得我的专业选择很有吸引力。 | matrix_single_choice | agreement_1_5 | umics | commitment | false | true | false | scored |
+| 35 | post | post_umics_commitment_04 | 我认同我的专业选择。 | matrix_single_choice | agreement_1_5 | umics | commitment | false | true | false | scored |
+| 36 | post | post_umics_commitment_05 | 我坚守我的专业选择。 | matrix_single_choice | agreement_1_5 | umics | commitment | false | true | false | scored |
+| 37 | post | post_umics_in_depth_exploration_01 | 我经常思考我的专业选择。 | matrix_single_choice | agreement_1_5 | umics | in_depth_exploration | false | true | false | scored |
+| 38 | post | post_umics_in_depth_exploration_02 | 我试图去发现关于我的专业选择的新事物。 | matrix_single_choice | agreement_1_5 | umics | in_depth_exploration | false | true | false | scored |
+| 39 | post | post_umics_in_depth_exploration_03 | 我经常反思我的专业选择。 | matrix_single_choice | agreement_1_5 | umics | in_depth_exploration | false | true | false | scored |
+| 40 | post | post_umics_in_depth_exploration_04 | 我经常和其他人谈论我的专业选择。 | matrix_single_choice | agreement_1_5 | umics | in_depth_exploration | false | true | false | scored |
+| 41 | post | post_umics_in_depth_exploration_05 | 我试图尽可能多地了解我的专业选择。 | matrix_single_choice | agreement_1_5 | umics | in_depth_exploration | false | true | false | scored |
+| 42 | post | post_umics_reconsideration_of_commitment_01 | 我经常想，试着去寻找一个不同的专业选择可能会更好。 | matrix_single_choice | agreement_1_5 | umics | reconsideration_of_commitment | false | true | false | scored |
+| 43 | post | post_umics_reconsideration_of_commitment_02 | 我经常想，一个新的专业选择会让我的生活变得更有趣。 | matrix_single_choice | agreement_1_5 | umics | reconsideration_of_commitment | false | true | false | scored |
+| 44 | post | post_umics_reconsideration_of_commitment_03 | 事实上，我正在寻找一个不同的专业选择。 | matrix_single_choice | agreement_1_5 | umics | reconsideration_of_commitment | false | true | false | scored |
 
 ## Implementation counts
 
 | Count | Value | Notes |
 |---|---:|---|
 | Pre stored response items | 23 | 3 demographics + 6 identity distress + 13 U-MICS scored + 1 pre U-MICS attention check. |
-| Post stored response items | 36 | 6 identity distress + 4 perceived AI competence + 5 anthropomorphism + 8 BPNSFS + 13 U-MICS. |
+| Post stored response items | 44 | 6 identity distress + 4 perceived AI competence + 5 anthropomorphism + 4 AI warmth + 12 BPNSFS + 13 U-MICS. |
 | Attention checks | 1 | `pre_ac_umics_select_5`; no post attention check in this version. |
 | DIDS items | 0 | DIDS removed from both phases by researcher decision on 2026-05-15. |

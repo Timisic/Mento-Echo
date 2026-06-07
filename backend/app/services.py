@@ -274,9 +274,14 @@ class ParticipantRegistryService:
 
     @staticmethod
     def _create_self_generated_participant(db: Session) -> Participant:
-        prefix = re.sub(r"[^A-Za-z0-9]", "", get_settings().participant_code_prefix.upper()) or "P"
+        settings = get_settings()
+        prefix = re.sub(r"[^A-Za-z0-9]", "", settings.participant_code_prefix.upper()) or "P"
         for _ in range(20):
             next_number = ParticipantRegistryService._next_self_code_number(db, prefix=prefix)
+            if settings.self_registration_limit > 0:
+                last_allowed = settings.self_registration_start_number + settings.self_registration_limit - 1
+                if next_number > last_allowed:
+                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="人数过多，被试已招满")
             suffix = "".join(random.choice(SELF_CODE_SUFFIX_ALPHABET) for _ in range(2))
             code = f"{prefix}{next_number:03d}-{suffix}"
             if db.scalar(select(Participant.id).where(Participant.participant_code == code)):
@@ -293,19 +298,23 @@ class ParticipantRegistryService:
 
     @staticmethod
     def _next_self_code_number(db: Session, *, prefix: str) -> int:
+        start_number = get_settings().self_registration_start_number
         max_number = ParticipantRegistryService._max_self_code_number_from_participants(db, prefix=prefix)
         max_number = max(
             max_number,
             ParticipantRegistryService._max_self_code_number_from_cleanup_audits(db, prefix=prefix),
         )
-        return max_number + 1
+        return max(start_number, max_number + 1)
 
     @staticmethod
     def _max_self_code_number_from_participants(db: Session, *, prefix: str) -> int:
         pattern = re.compile(rf"^{re.escape(prefix)}(\d+)-[A-Z0-9]+$")
         max_number = 0
         codes = db.scalars(
-            select(Participant.participant_code).where(Participant.participant_code.like(f"{prefix}%-%"))
+            select(Participant.participant_code).where(
+                Participant.registration_source == "self_generated",
+                Participant.participant_code.like(f"{prefix}%-%"),
+            )
         )
         for code in codes:
             match = pattern.match(code)

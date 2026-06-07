@@ -209,6 +209,8 @@ def test_export_package_structure_content_and_privacy_boundaries(client, admin_h
         assert analysis_row["topic_validity_exclusion_threshold"] == "> 0.30"
         assert analysis_row["ai_warmth_mean_post"] == "5.0"
         assert analysis_row["ai_warmth_sum_post"] == "20.0"
+        assert analysis_row["bpnsfs_adapted_dialogue_experience_competence_satisfaction_post"] == "5.0"
+        assert analysis_row["bpnsfs_adapted_dialogue_experience_need_satisfaction_total_post"] == "5.0"
         assert "raw identity reflection text" not in json.dumps(analysis_row, ensure_ascii=False)
         assert not any("content" in column or "message" in column for column in analysis_row)
         assert any(column.endswith("_change") for column in analysis_row)

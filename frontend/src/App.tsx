@@ -38,7 +38,7 @@ type ParticipantStep =
   | 'blocked';
 
 const PARTICIPANT_GROUP_QR_SRC = '/participant-group-qr.png';
-const PARTICIPANT_INFO_FORM_URL = 'https://www.wjx.top/vm/OAZxGku.aspx#';
+const PARTICIPANT_INFO_FORM_URL = 'https://www.wjx.top/vm/rZaC9UQ.aspx#';
 const ACTIVE_ELAPSED_DISPLAY_GRACE_SECONDS = 45;
 
 const statusLabels: Record<string, string> = {
@@ -486,7 +486,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
           onSubmit={(phaseResponses) => handleQuestionnaireSubmit('post', phaseResponses)}
         />
       ) : null}
-      {step === 'complete' ? <CompletionPage /> : null}
+      {step === 'complete' ? <CompletionPage participantCode={session?.participant_code ?? ''} /> : null}
       {step === 'blocked' ? (
         <StageGuide
           title="当前实验进度需要研究者处理"
@@ -1404,7 +1404,7 @@ function safeMarkdownHref(href: string): string | null {
   return null;
 }
 
-function CompletionPage() {
+function CompletionPage({ participantCode }: { participantCode: string }) {
   return (
     <section className="guide-panel completion" aria-labelledby="completion-heading">
       <p className="eyebrow">实验完成</p>
@@ -1413,6 +1413,9 @@ function CompletionPage() {
       <div className="participant-info-panel">
         <h3>被试费发放信息</h3>
         <p>请继续填写一次信息收集表，用于核对参与记录并发放被试费。请确保联系方式和收款信息准确。</p>
+        <p>
+          你的被试编号是：<strong>{participantCode || '当前编号'}</strong>。填写信息收集表时请按此编号填写，便于核对发放。
+        </p>
         <a className="primary-action completion-link" href={PARTICIPANT_INFO_FORM_URL} target="_blank" rel="noreferrer">
           填写被试费信息
         </a>

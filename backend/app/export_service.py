@@ -23,7 +23,7 @@ from app.models import (
     QuestionnaireResponse,
     QuestionnaireScore,
 )
-from app.questionnaire_config import QUESTIONNAIRE_VERSION
+from app.questionnaire_config import QUESTIONNAIRE_VERSION, score_rules_for_phase
 from app.services import DialogueService
 
 
@@ -293,7 +293,14 @@ def _analysis_dataset_rows(db: Session) -> list[dict[str, Any]]:
             "topic_validity_exclusion_threshold": TOPIC_VALIDITY_EXCLUSION_THRESHOLD_LABEL,
             "analysis_sample_status": _analysis_sample_status(session),
         }
-        score_prefixes = sorted({(instrument, dimension) for instrument, dimension, _ in participant_scores})
+        expected_score_prefixes = {
+            (_field_token(rule.instrument), _field_token(rule.dimension))
+            for phase in ("pre", "post")
+            for rule in score_rules_for_phase(phase)
+        }
+        score_prefixes = sorted(
+            expected_score_prefixes | {(instrument, dimension) for instrument, dimension, _ in participant_scores}
+        )
         for instrument, dimension in score_prefixes:
             pre = participant_scores.get((instrument, dimension, "pre"))
             post = participant_scores.get((instrument, dimension, "post"))
