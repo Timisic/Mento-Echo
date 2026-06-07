@@ -42,6 +42,20 @@ EXPORT_FILES = (
 )
 TOPIC_VALIDITY_EXCLUSION_THRESHOLD = 0.30
 TOPIC_VALIDITY_EXCLUSION_THRESHOLD_LABEL = "> 0.30"
+EXCLUDED_EXPORT_PARTICIPANT_CODES = {"PILOT001"}
+
+
+def _is_export_excluded_participant_code(participant_code: str | None) -> bool:
+    return bool(participant_code and participant_code in EXCLUDED_EXPORT_PARTICIPANT_CODES)
+
+
+def _contains_export_excluded_code(value: Any) -> bool:
+    text = (
+        json.dumps(_jsonable(value), ensure_ascii=False, sort_keys=True)
+        if value is not None
+        else ""
+    )
+    return any(code in text for code in EXCLUDED_EXPORT_PARTICIPANT_CODES)
 
 
 def build_export_zip(db: Session, *, admin_id: str) -> tuple[bytes, str]:
@@ -98,7 +112,9 @@ def _csv_payload(rows: list[dict[str, Any]]) -> tuple[bytes, int, str]:
 
 
 def _jsonl_payload(rows: list[dict[str, Any]]) -> tuple[bytes, int, str]:
-    text = "".join(json.dumps(_jsonable(row), ensure_ascii=False, sort_keys=True) + "\n" for row in rows)
+    text = "".join(
+        json.dumps(_jsonable(row), ensure_ascii=False, sort_keys=True) + "\n" for row in rows
+    )
     return text.encode("utf-8"), len(rows), "routine_research_data"
 
 
@@ -126,6 +142,8 @@ def _participants_rows(db: Session) -> list[dict[str, Any]]:
     participants = db.scalars(select(Participant).order_by(Participant.participant_code)).all()
     rows: list[dict[str, Any]] = []
     for participant in participants:
+        if _is_export_excluded_participant_code(participant.participant_code):
+            continue
         session = participant.experiment_session
         rows.append(
             {
@@ -147,6 +165,10 @@ def _session_rows(db: Session) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for session in sessions:
         participant = db.get(Participant, session.participant_id)
+        if _is_export_excluded_participant_code(
+            participant.participant_code if participant else None
+        ):
+            continue
         met_min_turns = session.participant_turn_count >= DialogueService.MIN_PARTICIPANT_TURNS
         met_min_duration = session.dialogue_elapsed_seconds >= DialogueService.MIN_ELAPSED_SECONDS
         rows.append(
@@ -209,6 +231,7 @@ def _questionnaire_response_rows(db: Session) -> list[dict[str, Any]]:
             "superseded_at": row.superseded_at,
         }
         for row in responses
+        if not _is_export_excluded_participant_code(row.participant_code)
     ]
 
 
@@ -238,6 +261,7 @@ def _questionnaire_score_rows(db: Session) -> list[dict[str, Any]]:
             "superseded_at": row.superseded_at,
         }
         for row in scores
+        if not _is_export_excluded_participant_code(row.participant_code)
     ]
 
 
@@ -257,10 +281,14 @@ def _analysis_dataset_rows(db: Session) -> list[dict[str, Any]]:
             score.phase,
         )
         scores_by_code.setdefault(score.participant_code, {})[key] = score.score
-        attention_by_code.setdefault(score.participant_code, {})[score.phase] = score.attention_check_passed
+        attention_by_code.setdefault(score.participant_code, {})[score.phase] = (
+            score.attention_check_passed
+        )
 
     rows: list[dict[str, Any]] = []
     for participant in participants:
+        if _is_export_excluded_participant_code(participant.participant_code):
+            continue
         session = participant.experiment_session
         participant_scores = scores_by_code.get(participant.participant_code, {})
         row: dict[str, Any] = {
@@ -279,14 +307,22 @@ def _analysis_dataset_rows(db: Session) -> list[dict[str, Any]]:
             "participant_turn_count": session.participant_turn_count if session else 0,
             "dialogue_elapsed_seconds": session.dialogue_elapsed_seconds if session else 0,
             "met_min_turns": (
-                session.participant_turn_count >= DialogueService.MIN_PARTICIPANT_TURNS if session else False
+                session.participant_turn_count >= DialogueService.MIN_PARTICIPANT_TURNS
+                if session
+                else False
             ),
             "met_min_duration": (
-                session.dialogue_elapsed_seconds >= DialogueService.MIN_ELAPSED_SECONDS if session else False
+                session.dialogue_elapsed_seconds >= DialogueService.MIN_ELAPSED_SECONDS
+                if session
+                else False
             ),
             "resume_count": session.resume_count if session else 0,
-            "pre_attention_check_passed": attention_by_code.get(participant.participant_code, {}).get("pre"),
-            "post_attention_check_passed": attention_by_code.get(participant.participant_code, {}).get("post"),
+            "pre_attention_check_passed": attention_by_code.get(
+                participant.participant_code, {}
+            ).get("pre"),
+            "post_attention_check_passed": attention_by_code.get(
+                participant.participant_code, {}
+            ).get("post"),
             "topic_validity_status": session.topic_validity_status if session else "not_ready",
             "topic_off_track_ratio": session.topic_off_track_ratio if session else None,
             "topic_off_track_gt_30pct": _topic_off_track_gt_30pct(session) if session else None,
@@ -299,7 +335,8 @@ def _analysis_dataset_rows(db: Session) -> list[dict[str, Any]]:
             for rule in score_rules_for_phase(phase)
         }
         score_prefixes = sorted(
-            expected_score_prefixes | {(instrument, dimension) for instrument, dimension, _ in participant_scores}
+            expected_score_prefixes
+            | {(instrument, dimension) for instrument, dimension, _ in participant_scores}
         )
         for instrument, dimension in score_prefixes:
             pre = participant_scores.get((instrument, dimension, "pre"))
@@ -308,7 +345,9 @@ def _analysis_dataset_rows(db: Session) -> list[dict[str, Any]]:
             row[f"{prefix}_pre"] = pre
             row[f"{prefix}_post"] = post
             row[f"{prefix}_change"] = (
-                round(post - pre, 6) if isinstance(pre, (int, float)) and isinstance(post, (int, float)) else None
+                round(post - pre, 6)
+                if isinstance(pre, (int, float)) and isinstance(post, (int, float))
+                else None
             )
         rows.append(row)
     return rows
@@ -342,11 +381,12 @@ def _chat_message_rows(db: Session) -> list[dict[str, Any]]:
         select(ChatMessage).order_by(ChatMessage.participant_code, ChatMessage.message_index)
     ).all()
     sessions_by_id = {
-        session.id: session
-        for session in db.scalars(select(ExperimentSession)).all()
+        session.id: session for session in db.scalars(select(ExperimentSession)).all()
     }
     rows: list[dict[str, Any]] = []
     for message in messages:
+        if _is_export_excluded_participant_code(message.participant_code):
+            continue
         session = sessions_by_id.get(message.experiment_session_id)
         rows.append(
             {
@@ -381,7 +421,9 @@ def _chat_message_rows(db: Session) -> list[dict[str, Any]]:
 
 
 def _behavior_event_rows(db: Session) -> list[dict[str, Any]]:
-    events = db.scalars(select(BehaviorEvent).order_by(BehaviorEvent.created_at, BehaviorEvent.id)).all()
+    events = db.scalars(
+        select(BehaviorEvent).order_by(BehaviorEvent.created_at, BehaviorEvent.id)
+    ).all()
     return [
         {
             "event_id": event.id,
@@ -393,6 +435,8 @@ def _behavior_event_rows(db: Session) -> list[dict[str, Any]]:
             "metadata": event.event_metadata,
         }
         for event in events
+        if not _is_export_excluded_participant_code(event.participant_code)
+        and not _contains_export_excluded_code(event.event_metadata)
     ]
 
 
@@ -410,6 +454,8 @@ def _audit_log_rows(db: Session) -> list[dict[str, Any]]:
             "metadata": log.audit_metadata,
         }
         for log in logs
+        if not _contains_export_excluded_code(log.target_id)
+        and not _contains_export_excluded_code(log.audit_metadata)
     ]
 
 
@@ -429,7 +475,9 @@ def _ai_call_rows(db: Session) -> list[dict[str, Any]]:
             "prompt_mode": (message.generation_params or {}).get(
                 "prompt_mode", LENGTH_GUARDED_PROMPTLESS_MODE
             ),
-            "fallback_from_provider": (message.generation_params or {}).get("fallback_from_provider"),
+            "fallback_from_provider": (message.generation_params or {}).get(
+                "fallback_from_provider"
+            ),
             "fallback_reason": (message.generation_params or {}).get("fallback_reason"),
             "request_started_at": message.request_started_at,
             "response_completed_at": message.response_completed_at,
@@ -440,6 +488,7 @@ def _ai_call_rows(db: Session) -> list[dict[str, Any]]:
             "error_message_sanitized": message.error_message_sanitized,
         }
         for message in assistant_messages
+        if not _is_export_excluded_participant_code(message.participant_code)
     ]
 
 

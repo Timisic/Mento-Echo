@@ -35,9 +35,12 @@ def _member(names: list[str], suffix: str) -> str:
 
 
 def _complete_pilot_flow(client, admin_headers, db_session, code: str = "PILOT01") -> str:
-    assert import_participants(
-        client, admin_headers, [{"participant_code": code, "assigned_group": "experiment"}]
-    ).status_code == 200
+    assert (
+        import_participants(
+            client, admin_headers, [{"participant_code": code, "assigned_group": "experiment"}]
+        ).status_code
+        == 200
+    )
     entry = client.post("/api/participant/entry", json={"participant_code": code})
     assert entry.status_code == 200, entry.text
     session_id = entry.json()["session"]["experiment_session_id"]
@@ -78,17 +81,25 @@ def _complete_pilot_flow(client, admin_headers, db_session, code: str = "PILOT01
     return session_id
 
 
-def test_admin_dashboard_reset_exclusion_controls_and_audit_events(client, admin_headers, db_session):
-    assert import_participants(
-        client, admin_headers, [{"participant_code": "ADMIN01", "assigned_group": "control"}]
-    ).status_code == 200
+def test_admin_dashboard_reset_exclusion_controls_and_audit_events(
+    client, admin_headers, db_session
+):
+    assert (
+        import_participants(
+            client, admin_headers, [{"participant_code": "ADMIN01", "assigned_group": "control"}]
+        ).status_code
+        == 200
+    )
     session_id = client.post("/api/participant/entry", json={"participant_code": "ADMIN01"}).json()[
         "session"
     ]["experiment_session_id"]
-    assert client.post(
-        f"/api/participant/sessions/{session_id}/questionnaires/pre/submit",
-        json={"responses": responses_for_phase("pre")},
-    ).status_code == 200
+    assert (
+        client.post(
+            f"/api/participant/sessions/{session_id}/questionnaires/pre/submit",
+            json={"responses": responses_for_phase("pre")},
+        ).status_code
+        == 200
+    )
     assert client.get(f"/api/participant/sessions/{session_id}/dialogue").status_code == 200
 
     status = client.get("/api/admin/status", headers=admin_headers)
@@ -146,7 +157,9 @@ def test_admin_dashboard_reset_exclusion_controls_and_audit_events(client, admin
     audit_actions = [row.action for row in db_session.query(AuditLog).order_by(AuditLog.created_at)]
     assert "pre_survey_reset" in audit_actions
     assert "session_excluded" in audit_actions
-    event_types = [row.event_type for row in db_session.query(BehaviorEvent).order_by(BehaviorEvent.created_at)]
+    event_types = [
+        row.event_type for row in db_session.query(BehaviorEvent).order_by(BehaviorEvent.created_at)
+    ]
     assert "admin_stage_reset" in event_types
     assert "session_excluded" in event_types
 
@@ -173,7 +186,9 @@ def test_export_package_structure_content_and_privacy_boundaries(client, admin_h
             "ai_call_records.csv",
             "export_manifest.json",
         }
-        assert {_member(names, suffix).split("/")[-1] for suffix in required_suffixes} == required_suffixes
+        assert {
+            _member(names, suffix).split("/")[-1] for suffix in required_suffixes
+        } == required_suffixes
 
         readme = archive.read(_member(names, "README.md")).decode("utf-8")
         assert "SENSITIVE RAW CHAT" in readme
@@ -209,8 +224,12 @@ def test_export_package_structure_content_and_privacy_boundaries(client, admin_h
         assert analysis_row["topic_validity_exclusion_threshold"] == "> 0.30"
         assert analysis_row["ai_warmth_mean_post"] == "5.0"
         assert analysis_row["ai_warmth_sum_post"] == "20.0"
-        assert analysis_row["bpnsfs_adapted_dialogue_experience_competence_satisfaction_post"] == "5.0"
-        assert analysis_row["bpnsfs_adapted_dialogue_experience_need_satisfaction_total_post"] == "5.0"
+        assert (
+            analysis_row["bpnsfs_adapted_dialogue_experience_competence_satisfaction_post"] == "5.0"
+        )
+        assert (
+            analysis_row["bpnsfs_adapted_dialogue_experience_need_satisfaction_total_post"] == "5.0"
+        )
         assert "raw identity reflection text" not in json.dumps(analysis_row, ensure_ascii=False)
         assert not any("content" in column or "message" in column for column in analysis_row)
         assert any(column.endswith("_change") for column in analysis_row)
@@ -226,7 +245,9 @@ def test_export_package_structure_content_and_privacy_boundaries(client, admin_h
         }
 
         chat_messages = _jsonl_rows(archive, _member(names, "chat_messages.jsonl"))
-        assert any("raw identity reflection text" in str(message["content"]) for message in chat_messages)
+        assert any(
+            "raw identity reflection text" in str(message["content"]) for message in chat_messages
+        )
         assert {message["role"] for message in chat_messages} == {"participant", "assistant"}
         assert {message["analysis_sample_status"] for message in chat_messages} == {
             "pending_topic_validity_coding"
@@ -258,7 +279,11 @@ def test_export_package_structure_content_and_privacy_boundaries(client, admin_h
 
         audits = _csv_rows(archive, _member(names, "audit_logs.csv"))
         audit_actions = {row["action"] for row in audits}
-        assert {"participant_import", "data_export_requested", "data_export_completed"} <= audit_actions
+        assert {
+            "participant_import",
+            "data_export_requested",
+            "data_export_completed",
+        } <= audit_actions
 
         ai_calls = _csv_rows(archive, _member(names, "ai_call_records.csv"))
         assert len(ai_calls) == 10
@@ -273,6 +298,37 @@ def test_export_package_structure_content_and_privacy_boundaries(client, admin_h
         assert not re.search(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", export_text)
 
 
+def test_export_package_excludes_pilot001_seed_or_test_code(client, admin_headers, db_session):
+    assert (
+        import_participants(
+            client,
+            admin_headers,
+            [{"participant_code": "PILOT001", "assigned_group": "experiment"}],
+        ).status_code
+        == 200
+    )
+    _complete_pilot_flow(client, admin_headers, db_session, code="EXPORT02")
+
+    export = client.post("/api/admin/export", headers=admin_headers)
+
+    assert export.status_code == 200, export.text
+    with zipfile.ZipFile(io.BytesIO(export.content)) as archive:
+        names = archive.namelist()
+        for suffix in (
+            "participants.csv",
+            "experiment_sessions.csv",
+            "questionnaire_responses.csv",
+            "questionnaire_scores.csv",
+            "analysis_dataset.csv",
+            "chat_messages.jsonl",
+            "behavior_events.jsonl",
+            "ai_call_records.csv",
+        ):
+            assert "PILOT001" not in archive.read(_member(names, suffix)).decode("utf-8")
+        participants = _csv_rows(archive, _member(names, "participants.csv"))
+        assert [row["participant_code"] for row in participants] == ["EXPORT02"]
+
+
 def test_export_completed_audit_is_not_committed_when_zip_build_fails(
     client, admin_headers, db_session, monkeypatch
 ):
@@ -285,7 +341,9 @@ def test_export_completed_audit_is_not_committed_when_zip_build_fails(
         client.post("/api/admin/export", headers=admin_headers)
     db_session.expire_all()
     audit_actions = [row.action for row in db_session.query(AuditLog).order_by(AuditLog.created_at)]
-    event_types = [row.event_type for row in db_session.query(BehaviorEvent).order_by(BehaviorEvent.created_at)]
+    event_types = [
+        row.event_type for row in db_session.query(BehaviorEvent).order_by(BehaviorEvent.created_at)
+    ]
     assert "data_export_requested" not in audit_actions
     assert "data_export_completed" not in audit_actions
     assert "data_export_requested" not in event_types

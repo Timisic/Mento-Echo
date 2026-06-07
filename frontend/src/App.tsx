@@ -39,6 +39,7 @@ type ParticipantStep =
 
 const PARTICIPANT_GROUP_QR_SRC = '/participant-group-qr.png';
 const PARTICIPANT_INFO_FORM_URL = 'https://www.wjx.top/vm/rZaC9UQ.aspx#';
+const TEST_PARTICIPANT_CODE = 'PILOT001';
 const ACTIVE_ELAPSED_DISPLAY_GRACE_SECONDS = 45;
 
 const statusLabels: Record<string, string> = {
@@ -380,6 +381,24 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
     }
   }, [session, step]);
 
+  async function handlePilotTestJump(targetStep: Exclude<ParticipantStep, 'entry' | 'blocked'>) {
+    if (!session) return;
+    setError('');
+    setStatusMessage('PILOT001 测试模式：当前操作不会写入正式实验数据。');
+    if (targetStep === 'pre' || targetStep === 'post') {
+      await loadQuestionnaire(targetStep);
+      return;
+    }
+    if (targetStep === 'dialogue') {
+      await handleStartDialogue();
+      return;
+    }
+    setQuestionnaire(null);
+    setDialogue(null);
+    setAssistantThinking(false);
+    setStep(targetStep);
+  }
+
   function updateResponse(phase: Phase, itemKey: string, value: string | number) {
     setResponses((current) => ({
       ...current,
@@ -389,6 +408,7 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
   }
 
   const isDialogueStep = step === 'dialogue';
+  const isPilotTestMode = session?.participant_code === TEST_PARTICIPANT_CODE;
 
   return (
     <section className={isDialogueStep ? 'flow dialogue-flow' : 'flow'} aria-labelledby={isDialogueStep ? 'dialogue-heading' : 'participant-title'}>
@@ -403,6 +423,9 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
       {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
       {statusMessage ? <StatusNotice tone="success">{statusMessage}</StatusNotice> : null}
       {busy && !isDialogueStep ? <StatusNotice tone="loading">正在处理，请稍候。</StatusNotice> : null}
+      {isPilotTestMode ? (
+        <PilotTestToolbar activeStep={step} busy={busy} onJump={(targetStep) => void handlePilotTestJump(targetStep)} />
+      ) : null}
 
       {step === 'entry' ? <ParticipantEntry onSubmit={handleEntry} onSelfRegister={handleSelfRegister} busy={busy} /> : null}
       {step === 'welcome' ? (
@@ -497,6 +520,50 @@ function ParticipantFlow({ onBack }: { onBack: () => void }) {
         />
       ) : null}
     </section>
+  );
+}
+
+type PilotTestTargetStep = Exclude<ParticipantStep, 'entry' | 'blocked'>;
+
+const pilotTestSteps: Array<{ step: PilotTestTargetStep; label: string }> = [
+  { step: 'welcome', label: '欢迎页' },
+  { step: 'pre', label: '前测' },
+  { step: 'ai-guide', label: '对话说明' },
+  { step: 'dialogue', label: '对话' },
+  { step: 'post-guide', label: '后测说明' },
+  { step: 'post', label: '后测' },
+  { step: 'complete', label: '完成页' }
+];
+
+function PilotTestToolbar({
+  activeStep,
+  busy,
+  onJump
+}: {
+  activeStep: ParticipantStep;
+  busy: boolean;
+  onJump: (targetStep: PilotTestTargetStep) => void;
+}) {
+  return (
+    <nav className="pilot-test-toolbar" aria-label="PILOT001 测试跳转">
+      <div>
+        <strong>PILOT001 测试模式</strong>
+        <span>不保存正式实验数据</span>
+      </div>
+      <div className="pilot-test-actions">
+        {pilotTestSteps.map(({ step: targetStep, label }) => (
+          <button
+            key={targetStep}
+            type="button"
+            className={activeStep === targetStep ? 'choice selected' : 'choice'}
+            disabled={busy}
+            onClick={() => onJump(targetStep)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </nav>
   );
 }
 

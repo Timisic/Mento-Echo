@@ -5,8 +5,18 @@ import logging
 import threading
 import time
 from collections import defaultdict, deque
+from datetime import UTC, datetime
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
@@ -17,8 +27,15 @@ from app.ai_provider import AIProviderError
 from app.config import get_settings
 from app.db import database_health, get_session
 from app.export_service import build_export_zip
-from app.models import AuditLog, BehaviorEvent, ChatMessage, ExperimentSession, Participant, QuestionnaireScore
-from app.questionnaire_config import QUESTIONNAIRE_VERSION, SCALE_PROFILES
+from app.models import (
+    AuditLog,
+    BehaviorEvent,
+    ChatMessage,
+    ExperimentSession,
+    Participant,
+    QuestionnaireScore,
+)
+from app.questionnaire_config import QUESTIONNAIRE_VERSION, SCALE_PROFILES, get_items
 from app.schemas import (
     AdminLoginRequest,
     AdminLoginResponse,
@@ -47,6 +64,7 @@ from app.schemas import (
     ScaleProfileResponse,
     SendMessageRequest,
     SendMessageResponse,
+    SessionResponse,
     TransitionRequest,
     TopicValidityCodingRequest,
     TopicValidityCodingResponse,
@@ -73,7 +91,9 @@ class InMemoryWindowLimiter:
         self._events: dict[str, deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
 
-    def check(self, key: str, *, limit: int, window_seconds: float, now: float | None = None) -> int | None:
+    def check(
+        self, key: str, *, limit: int, window_seconds: float, now: float | None = None
+    ) -> int | None:
         if limit <= 0 or window_seconds <= 0:
             return None
         now = time.monotonic() if now is None else now
@@ -133,6 +153,10 @@ class AdminLoginFailureTracker:
 
 _RATE_LIMITER = InMemoryWindowLimiter()
 _ADMIN_LOGIN_FAILURES = AdminLoginFailureTracker()
+PILOT_TEST_PARTICIPANT_CODE = "PILOT001"
+PILOT_TEST_SESSION_ID = "pilot001-test-session"
+_PILOT_TEST_DIALOGUE_LOCK = threading.Lock()
+_PILOT_TEST_DIALOGUE_MESSAGES: list[ChatMessageResponse] = []
 
 app.add_middleware(
     CORSMiddleware,
@@ -396,10 +420,13 @@ def admin_status(
 ) -> AdminStatusResponse:
     participants = db.scalars(
         select(Participant)
+        .where(Participant.participant_code != PILOT_TEST_PARTICIPANT_CODE)
         .options(selectinload(Participant.experiment_session))
         .order_by(Participant.participant_code)
     ).all()
-    return AdminStatusResponse(participants=[to_status_row(participant) for participant in participants])
+    return AdminStatusResponse(
+        participants=[to_status_row(participant) for participant in participants]
+    )
 
 
 @app.post("/api/admin/sessions/{session_id}/transition")
@@ -411,7 +438,9 @@ def transition_session(
 ) -> dict[str, object]:
     session = db.get(ExperimentSession, session_id)
     if session is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment Session not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment Session not found"
+        )
     try:
         ExperimentSessionService.transition(db, session=session, next_status=payload.status)
     except ValueError as exc:
@@ -569,6 +598,12 @@ def export_package(
 def participant_entry(
     payload: ParticipantEntryRequest, db: Session = Depends(get_session)
 ) -> ParticipantEntryResponse:
+    if payload.participant_code.strip().upper() == PILOT_TEST_PARTICIPANT_CODE:
+        return ParticipantEntryResponse(
+            accepted=True,
+            message="Pilot test session opened. Data will not be stored.",
+            session=_pilot_test_session_response(),
+        )
     participant, session, created = ExperimentSessionService.enter_participant_code(
         db, participant_code=payload.participant_code
     )
@@ -580,7 +615,9 @@ def participant_entry(
 
 
 @app.post("/api/participant/self-register", response_model=ParticipantSelfRegisterResponse)
-def participant_self_register(db: Session = Depends(get_session)) -> ParticipantSelfRegisterResponse:
+def participant_self_register(
+    db: Session = Depends(get_session),
+) -> ParticipantSelfRegisterResponse:
     participant, session = ParticipantRegistryService.self_register(db)
     return ParticipantSelfRegisterResponse(
         participant_code=participant.participant_code,
@@ -590,10 +627,22 @@ def participant_self_register(db: Session = Depends(get_session)) -> Participant
 
 
 @app.post("/api/participant/sessions/{session_id}/assignment", response_model=AssignmentResponse)
-def create_or_get_assignment(session_id: str, db: Session = Depends(get_session)) -> AssignmentResponse:
+def create_or_get_assignment(
+    session_id: str, db: Session = Depends(get_session)
+) -> AssignmentResponse:
+    if _is_pilot_test_session(session_id):
+        return AssignmentResponse(
+            experiment_session_id=PILOT_TEST_SESSION_ID,
+            participant_code=PILOT_TEST_PARTICIPANT_CODE,
+            group="pilot",
+            assignment_source="pilot_single",
+            assignment_locked=True,
+        )
     session = db.get(ExperimentSession, session_id)
     if session is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment Session not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment Session not found"
+        )
     session = GroupAssignmentService.ensure_assignment(db, session=session)
     participant = db.get(Participant, session.participant_id)
     assert participant is not None
@@ -606,14 +655,42 @@ def create_or_get_assignment(session_id: str, db: Session = Depends(get_session)
     )
 
 
-def _get_session_and_participant(db: Session, session_id: str) -> tuple[ExperimentSession, Participant]:
+def _get_session_and_participant(
+    db: Session, session_id: str
+) -> tuple[ExperimentSession, Participant]:
     session = db.get(ExperimentSession, session_id)
     if session is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment Session not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment Session not found"
+        )
     participant = db.get(Participant, session.participant_id)
     if participant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Participant not found")
     return session, participant
+
+
+def _is_pilot_test_session(session_id: str) -> bool:
+    return session_id == PILOT_TEST_SESSION_ID
+
+
+def _pilot_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _pilot_test_session_response(status_value: str = "not_started") -> SessionResponse:
+    completed_at = _pilot_now() if status_value == "completed" else None
+    return SessionResponse(
+        experiment_session_id=PILOT_TEST_SESSION_ID,
+        participant_code=PILOT_TEST_PARTICIPANT_CODE,
+        status=status_value,  # type: ignore[arg-type]
+        group="pilot",
+        assignment_source="pilot_single",
+        assignment_locked=True,
+        resume_count=0,
+        last_seen_at=_pilot_now(),
+        started_at=_pilot_now(),
+        completed_at=completed_at,
+    )
 
 
 def _scale_response(scale_key: str) -> ScaleProfileResponse:
@@ -657,6 +734,27 @@ def _chat_message_response(message: ChatMessage) -> ChatMessageResponse:
     )
 
 
+def _pilot_test_message(role: str, content: str) -> ChatMessageResponse:
+    with _PILOT_TEST_DIALOGUE_LOCK:
+        message = ChatMessageResponse(
+            id=f"pilot001-test-message-{len(_PILOT_TEST_DIALOGUE_MESSAGES) + 1}",
+            message_index=len(_PILOT_TEST_DIALOGUE_MESSAGES) + 1,
+            role=role,
+            content=content,
+            provider_name=None if role == "participant" else "pilot-test",
+            model_name=None if role == "participant" else "non-persistent-test-reply",
+            system_prompt_version=None,
+            generation_params=None,
+            duration_ms=None,
+            retry_count=None,
+            error_code=None,
+            error_message_sanitized=None,
+            created_at=_pilot_now(),
+        )
+        _PILOT_TEST_DIALOGUE_MESSAGES.append(message)
+        return message
+
+
 def _generate_assistant_message_background(session_id: str, participant_message_id: str) -> None:
     session_generator = get_session()
     db = next(session_generator)
@@ -693,17 +791,34 @@ def _progress_response(progress: dict[str, object]) -> DialogueProgressResponse:
     )
 
 
-@app.get("/api/participant/sessions/{session_id}/questionnaires/{phase}", response_model=QuestionnaireDefinitionResponse)
-def questionnaire_definition(session_id: str, phase: str, db: Session = Depends(get_session)) -> QuestionnaireDefinitionResponse:
-    if phase not in {"pre", "post"}:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown questionnaire phase")
-    session, _participant = _get_session_and_participant(db, session_id)
-    if phase == "post" and session.status != "chat_completed":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Post-survey is available only after dialogue completion")
-    if phase == "pre" and session.status not in {"not_started", "reset_required"} and not QuestionnaireService.active_responses(db, session_id=session.id, phase="pre"):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pre-survey is not available")
+def _pilot_test_progress() -> DialogueProgressResponse:
+    participant_turns = sum(
+        1 for message in _PILOT_TEST_DIALOGUE_MESSAGES if message.role == "participant"
+    )
+    return DialogueProgressResponse(
+        participant_turn_count=max(DialogueService.MIN_PARTICIPANT_TURNS, participant_turns),
+        dialogue_elapsed_seconds=DialogueService.MIN_ELAPSED_SECONDS,
+        met_min_turns=True,
+        met_min_duration=True,
+        eligible_to_finish=True,
+        required_participant_turns=DialogueService.MIN_PARTICIPANT_TURNS,
+        required_elapsed_seconds=DialogueService.MIN_ELAPSED_SECONDS,
+        max_participant_turns=DialogueService.MAX_PARTICIPANT_TURNS,
+        max_elapsed_seconds=DialogueService.MAX_ELAPSED_SECONDS,
+        finish_prompt_visible=True,
+        forced_to_finish=False,
+        forced_finish_reason=None,
+        finish_decision=None,
+        continue_until_turn_count=None,
+        reminder_due=False,
+        reminder_text="测试模式已开放结束入口，不计入正式实验数据。",
+    )
+
+
+def _questionnaire_definition_response(
+    phase: str, *, locked: bool
+) -> QuestionnaireDefinitionResponse:
     items = QuestionnaireService.get_definition(phase)  # type: ignore[arg-type]
-    locked = bool(QuestionnaireService.active_responses(db, session_id=session.id, phase=phase))  # type: ignore[arg-type]
     used_scales = {item.scale for item in items}
     return QuestionnaireDefinitionResponse(
         questionnaire_version=QUESTIONNAIRE_VERSION,
@@ -729,7 +844,41 @@ def questionnaire_definition(session_id: str, phase: str, db: Session = Depends(
     )
 
 
-@app.post("/api/participant/sessions/{session_id}/questionnaires/{phase}/submit", response_model=QuestionnaireSubmitResponse)
+@app.get(
+    "/api/participant/sessions/{session_id}/questionnaires/{phase}",
+    response_model=QuestionnaireDefinitionResponse,
+)
+def questionnaire_definition(
+    session_id: str, phase: str, db: Session = Depends(get_session)
+) -> QuestionnaireDefinitionResponse:
+    if phase not in {"pre", "post"}:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Unknown questionnaire phase"
+        )
+    if _is_pilot_test_session(session_id):
+        return _questionnaire_definition_response(phase, locked=False)
+    session, _participant = _get_session_and_participant(db, session_id)
+    if phase == "post" and session.status != "chat_completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Post-survey is available only after dialogue completion",
+        )
+    if (
+        phase == "pre"
+        and session.status not in {"not_started", "reset_required"}
+        and not QuestionnaireService.active_responses(db, session_id=session.id, phase="pre")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Pre-survey is not available"
+        )
+    locked = bool(QuestionnaireService.active_responses(db, session_id=session.id, phase=phase))  # type: ignore[arg-type]
+    return _questionnaire_definition_response(phase, locked=locked)
+
+
+@app.post(
+    "/api/participant/sessions/{session_id}/questionnaires/{phase}/submit",
+    response_model=QuestionnaireSubmitResponse,
+)
 def submit_questionnaire(
     session_id: str,
     phase: str,
@@ -737,7 +886,19 @@ def submit_questionnaire(
     db: Session = Depends(get_session),
 ) -> QuestionnaireSubmitResponse:
     if phase not in {"pre", "post"}:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown questionnaire phase")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Unknown questionnaire phase"
+        )
+    if _is_pilot_test_session(session_id):
+        next_status = "pre_survey_submitted" if phase == "pre" else "completed"
+        return QuestionnaireSubmitResponse(
+            phase=phase,  # type: ignore[arg-type]
+            questionnaire_version=QUESTIONNAIRE_VERSION,
+            locked=False,
+            response_count=len(get_items(phase)),  # type: ignore[arg-type]
+            scores=[],
+            session=_pilot_test_session_response(next_status),
+        )
     session, participant = _get_session_and_participant(db, session_id)
     responses, scores = QuestionnaireService.submit(
         db,
@@ -765,7 +926,9 @@ def reset_questionnaire(
     db: Session = Depends(get_session),
 ) -> dict[str, object]:
     if phase not in {"pre", "post"}:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown questionnaire phase")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Unknown questionnaire phase"
+        )
     session, participant = _get_session_and_participant(db, session_id)
     QuestionnaireService.reset_phase(
         db,
@@ -780,6 +943,19 @@ def reset_questionnaire(
 
 @app.get("/api/participant/sessions/{session_id}/dialogue", response_model=DialogueStateResponse)
 def get_dialogue(session_id: str, db: Session = Depends(get_session)) -> DialogueStateResponse:
+    if _is_pilot_test_session(session_id):
+        with _PILOT_TEST_DIALOGUE_LOCK:
+            messages = list(_PILOT_TEST_DIALOGUE_MESSAGES)
+        return DialogueStateResponse(
+            experiment_session_id=PILOT_TEST_SESSION_ID,
+            participant_code=PILOT_TEST_PARTICIPANT_CODE,
+            group="pilot",
+            system_prompt_version=None,
+            status="chat_in_progress",
+            initial_message_suggestion="这是 PILOT001 测试模式：可以输入任意内容，消息不会写入正式实验数据。",
+            progress=_pilot_test_progress(),
+            messages=messages,
+        )
     session, participant = _get_session_and_participant(db, session_id)
     messages = DialogueService.start_or_get(db, session=session, participant=participant)
     progress = DialogueService.heartbeat_progress(db, session=session)
@@ -796,18 +972,34 @@ def get_dialogue(session_id: str, db: Session = Depends(get_session)) -> Dialogu
     )
 
 
-@app.post("/api/participant/sessions/{session_id}/dialogue/messages", response_model=SendMessageResponse)
+@app.post(
+    "/api/participant/sessions/{session_id}/dialogue/messages", response_model=SendMessageResponse
+)
 def send_dialogue_message(
     session_id: str,
     payload: SendMessageRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_session),
 ) -> SendMessageResponse:
+    if _is_pilot_test_session(session_id):
+        participant_message = _pilot_test_message("participant", payload.content)
+        assistant_message = _pilot_test_message(
+            "assistant",
+            "测试模式已收到你的消息。这里用于检查页面流程和渲染效果，不会写入正式实验数据。",
+        )
+        return SendMessageResponse(
+            participant_message=participant_message,
+            assistant_message=assistant_message,
+            progress=_pilot_test_progress(),
+            status="chat_in_progress",
+        )
     session, participant = _get_session_and_participant(db, session_id)
     participant_message = DialogueService.send_message(
         db, session=session, participant=participant, content=payload.content
     )
-    background_tasks.add_task(_generate_assistant_message_background, session.id, participant_message.id)
+    background_tasks.add_task(
+        _generate_assistant_message_background, session.id, participant_message.id
+    )
     progress = DialogueService.update_progress(db, session=session)
     db.commit()
     return SendMessageResponse(
@@ -818,12 +1010,18 @@ def send_dialogue_message(
     )
 
 
-@app.post("/api/participant/sessions/{session_id}/dialogue/finish", response_model=FinishDialogueResponse)
+@app.post(
+    "/api/participant/sessions/{session_id}/dialogue/finish", response_model=FinishDialogueResponse
+)
 def finish_dialogue(
     session_id: str,
     payload: FinishDialogueRequest | None = None,
     db: Session = Depends(get_session),
 ) -> FinishDialogueResponse:
+    if _is_pilot_test_session(session_id):
+        progress = _pilot_test_progress()
+        progress.finish_decision = payload.decision if payload else "can_end"
+        return FinishDialogueResponse(status="chat_completed", progress=progress)
     session, participant = _get_session_and_participant(db, session_id)
     decision = payload.decision if payload else "can_end"
     DialogueService.finish(db, session=session, participant=participant, decision=decision)
