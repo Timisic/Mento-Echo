@@ -513,10 +513,14 @@ def completed_excluded_rows(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
         if row["completed"] != "true" or row["analysis_decision"] == "include_main":
             continue
         raw_reasons = str(row["exclusion_reasons"])
+        failed_attention = "attention_check_failed" in raw_reasons
         output.append(
             {
                 "participant_code": str(row["participant_code"]),
                 "excluded_reason": readable_exclusion_reason(raw_reasons),
+                "failed_attention_check_item_key": "pre_ac_umics_select_5" if failed_attention else "",
+                "failed_attention_check_item_text": "这道题请选择5" if failed_attention else "",
+                "failed_attention_expected_response": "5" if failed_attention else "",
                 "raw_exclusion_reasons": raw_reasons,
             }
         )
@@ -606,7 +610,7 @@ Generated from the local PostgreSQL database with read-only queries.
 - `valid_completed_analysis_scores.csv`: retained completed participants in the same wide score format.
 - `participant_screening_all.csv`: all formal-window participants with inclusion/exclusion flags.
 - `excluded_participants.csv`: participants not in the main analysis set with reasons.
-- `completed_excluded_participants.csv`: completed participants excluded from the main analysis, with concise Chinese reasons.
+- `completed_excluded_participants.csv`: completed participants excluded from the main analysis, with concise Chinese reasons and the failed attention-check item when applicable.
 - `attention_check_failures.csv`: participants who failed the attention check.
 - `conversation_review_recommended.csv`: participants whose dialogue was thin/off-topic enough to inspect manually.
 - `conversation_review_notes.md`: compact participant-message digests for review; not a full raw-chat export.
